@@ -7,7 +7,7 @@ import json
 import secrets
 import sys
 import time
-import aiohttp
+import aiohttp # type: ignore
 from typing import Any
 
 WEBSOCKET_PORT = 3030
