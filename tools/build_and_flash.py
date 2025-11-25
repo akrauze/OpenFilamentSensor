@@ -11,7 +11,7 @@ Options:
   --env ENV            PlatformIO env to use (default: esp32-s3-dev)
   --skip-npm-install   Skip `npm install` in webui_lite/ (assumes deps already installed)
   --local              Only build Lite UI/filesystem; skip PlatformIO upload steps
-  --ignore-secrets     Do not merge or package data/user_settings.secrets*.json
+  --ignore-secrets     Do not merge or package data/secrets.json
 """
 
 from __future__ import annotations
@@ -25,13 +25,10 @@ import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
-from typing import List, Optional
+from datetime import datetime
+from typing import Iterator, List, Optional
 
-SECRET_FILE_PATTERNS = (
-    "user_settings.secrets.json",
-    "user_settings.secrets.json.example",
-    "user_settings.secrets*.json",
-)
+SECRET_FILENAME = "secrets.json"
 
 
 @contextmanager
@@ -58,6 +55,58 @@ def temporarily_hide_files(paths: List[str]):
             shutil.rmtree(staging_dir, ignore_errors=True)
 
 
+@contextmanager
+def temporarily_merge_secrets(settings_path: str, secrets_path: str, ignore: bool) -> Iterator[bool]:
+    """
+    Merge secrets into user_settings.json for the duration of the context.
+    Always restores the original contents, even if later steps fail.
+    """
+    if ignore:
+        yield False
+        return
+
+    if not os.path.exists(secrets_path):
+        raise FileNotFoundError(
+            f"Required secrets file not found at {secrets_path}. "
+            "Create it or pass --ignore-secrets."
+        )
+
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            original_text = f.read()
+            base_settings = json.loads(original_text or "{}")
+    except FileNotFoundError:
+        original_text = ""
+        base_settings = {}
+    except Exception as e:  # pragma: no cover
+        print(f"WARNING: Failed to read base user_settings.json: {e}")
+        original_text = ""
+        base_settings = {}
+
+    try:
+        with open(secrets_path, "r", encoding="utf-8") as f:
+            secrets = json.load(f)
+    except Exception as e:  # pragma: no cover
+        print(f"WARNING: Failed to read {SECRET_FILENAME}: {e}")
+        secrets = {}
+
+    for key in ("ssid", "passwd", "elegooip"):
+        if key in secrets:
+            base_settings[key] = secrets[key]
+
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump(base_settings, f, indent=2)
+        f.write("\n")
+    print("Merged secrets into data/user_settings.json for this build (not committed).")
+
+    try:
+        yield True
+    finally:
+        with open(settings_path, "w", encoding="utf-8") as f:
+            f.write(original_text)
+        print("Restored original data/user_settings.json after build.")
+
+
 def run(cmd: List[str], cwd: Optional[str] = None) -> None:
     print(f"> {' '.join(cmd)} (cwd={cwd or os.getcwd()})")
     subprocess.run(cmd, cwd=cwd, check=True)
@@ -73,6 +122,17 @@ def ensure_executable(name: str) -> None:
         else:
             print(f"Install `{name}` or update your PATH.")
         sys.exit(1)
+
+
+def create_build_timestamp(data_dir: str) -> None:
+    """Create build_timestamp.txt with format MMDDYYHHMMSS for filesystem identification."""
+    now = datetime.utcnow()
+    # Format: MMDDYYHHMMSS
+    thumbprint = now.strftime("%m%d%y%H%M%S")
+    timestamp_path = os.path.join(data_dir, "build_timestamp.txt")
+    with open(timestamp_path, "w", encoding="utf-8") as f:
+        f.write(thumbprint)
+    print(f"Created filesystem build thumbprint: {thumbprint}")
 
 
 def main() -> None:
@@ -97,7 +157,7 @@ def main() -> None:
     parser.add_argument(
         "--ignore-secrets",
         action="store_true",
-        help="Skip merging user_settings.secrets.json and omit secrets files from the filesystem image.",
+        help="Skip merging data/secrets.json and omit secrets files from the filesystem image.",
     )
     args = parser.parse_args()
 
@@ -107,14 +167,18 @@ def main() -> None:
     webui_lite_dir = os.path.join(repo_root, "webui_lite")
     data_dir = os.path.join(repo_root, "data")
     data_lite_subdir = os.path.join(data_dir, "lite")
-    secret_file_paths: List[str] = []
-    for pattern in SECRET_FILE_PATTERNS:
-        secret_file_paths.extend(glob.glob(os.path.join(data_dir, pattern)))
-    secret_file_paths = sorted(set(secret_file_paths))
+    secret_file_paths: List[str] = [os.path.join(data_dir, SECRET_FILENAME)]
+    legacy_secret_paths = glob.glob(os.path.join(data_dir, "user_settings.secrets.json*"))
+    if legacy_secret_paths:
+        print("ERROR: Legacy secrets files detected in data/:")
+        for path in legacy_secret_paths:
+            print(f"  - {path}")
+        print("Rename or move secrets into data/secrets.json and remove the old files.")
+        sys.exit(1)
 
     # Ensure a base user_settings.json exists; this file should be safe to commit and can
     # leave SSID/password/IP blank. Per-run secrets are provided via
-    # user_settings.secrets.json and merged only for the filesystem image.
+    # data/secrets.json and merged only for the filesystem image.
     settings_path = os.path.join(data_dir, "user_settings.json")
     template_path = os.path.join(data_dir, "user_settings.template.json")
     if not os.path.exists(settings_path) and os.path.exists(template_path):
@@ -157,59 +221,31 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Before uploading the filesystem, merge any local secrets into a temporary copy of
-    # user_settings.json so you don't have to commit your SSID/password/IP. After the
-    # upload, the original file contents are restored so the repo stays clean.
-    secrets_path = os.path.join(data_dir, "user_settings.secrets.json")
-    base_settings_text: Optional[str] = None
-    if not args.ignore_secrets and os.path.exists(secrets_path):
-        try:
-            with open(settings_path, "r", encoding="utf-8") as f:
-                base_settings_text = f.read()
-                base_settings = json.loads(base_settings_text or "{}")
-        except Exception as e:  # pragma: no cover
-            print(f"WARNING: Failed to read base user_settings.json: {e}")
-            base_settings = {}
+    secrets_path = secret_file_paths[0]
 
-        try:
-            with open(secrets_path, "r", encoding="utf-8") as f:
-                secrets = json.load(f)
-        except Exception as e:  # pragma: no cover
-            print(f"WARNING: Failed to read user_settings.secrets.json: {e}")
-            secrets = {}
-
-        for key in ("ssid", "passwd", "elegooip"):
-            if key in secrets:
-                base_settings[key] = secrets[key]
-
-        # Write merged settings for the build only
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump(base_settings, f, indent=2)
-            f.write("\n")
-        print("Merged secrets into data/user_settings.json for this build (not committed).")
-    elif args.ignore_secrets and os.path.exists(secrets_path):
-        print("Skipping data/user_settings.secrets.json merge (--ignore-secrets).")
+    if args.ignore_secrets:
+        print("Skipping data/secrets.json merge (--ignore-secrets).")
 
     try:
-        # Filesystem upload/build (uses merged settings if present)
-        fs_target = "uploadfs" if not args.local else "buildfs"
-        with temporarily_hide_files(secret_file_paths):
-            run([pio_cmd, "run", "-e", args.env, "-t", fs_target], cwd=repo_root)
+        with temporarily_merge_secrets(settings_path, secrets_path, args.ignore_secrets):
+            # Create filesystem build timestamp before building filesystem
+            create_build_timestamp(data_dir)
 
-        if args.local:
-            run([pio_cmd, "run", "-e", args.env], cwd=repo_root)
-            print("\nAll done. Build artifacts are ready in `data/` and `.pio/build`.")
-        else:
-            # Firmware upload (will build firmware first if needed)
-            run([pio_cmd, "run", "-e", args.env, "-t", "upload"], cwd=repo_root)
-            print("\nAll done. Firmware and filesystem have been flashed.")
-    finally:
-        # Restore the original committed user_settings.json so secrets are not left in the
-        # working tree. This keeps git status clean and avoids accidental commits.
-        if base_settings_text is not None:
-            with open(settings_path, "w", encoding="utf-8") as f:
-                f.write(base_settings_text)
-            print("Restored original data/user_settings.json after filesystem upload.")
+            # Filesystem upload/build (uses merged settings if present)
+            fs_target = "uploadfs" if not args.local else "buildfs"
+            with temporarily_hide_files(secret_file_paths):
+                run([pio_cmd, "run", "-e", args.env, "-t", fs_target], cwd=repo_root)
+
+            if args.local:
+                run([pio_cmd, "run", "-e", args.env], cwd=repo_root)
+                print("\nAll done. Build artifacts are ready in `data/` and `.pio/build`.")
+            else:
+                # Firmware upload (will build firmware first if needed)
+                run([pio_cmd, "run", "-e", args.env, "-t", "upload"], cwd=repo_root)
+                print("\nAll done. Firmware and filesystem have been flashed.")
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

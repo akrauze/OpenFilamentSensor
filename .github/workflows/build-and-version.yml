@@ -67,6 +67,10 @@ jobs:
         working-directory: webui_lite
         run: npm ci
 
+      - name: Generate build timestamp
+        id: timestamp
+        run: echo "datetime=$(date -u +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
       - name: Build firmware + filesystem for ${{ matrix.env }}
         run: |
           python tools/build_and_flash.py --env ${{ matrix.env }} --local --ignore-secrets
@@ -74,13 +78,14 @@ jobs:
       - name: Collect merged image
         run: |
           BUILD_DIR=.pio/build/${{ matrix.env }}
+          BUILD_DATETIME=${{ steps.timestamp.outputs.datetime }}
           mkdir -p artifacts/${{ matrix.env }}
-          cp $BUILD_DIR/firmware.bin artifacts/${{ matrix.env }}/firmware.bin
-          cp $BUILD_DIR/littlefs.bin artifacts/${{ matrix.env }}/littlefs.bin
-          cp $BUILD_DIR/firmware_merged.bin artifacts/${{ matrix.env }}/firmware_merged.bin
+          cp $BUILD_DIR/firmware.bin artifacts/${{ matrix.env }}/firmware_${BUILD_DATETIME}.bin
+          cp $BUILD_DIR/littlefs.bin artifacts/${{ matrix.env }}/littlefs_${BUILD_DATETIME}.bin
+          cp $BUILD_DIR/firmware_merged.bin artifacts/${{ matrix.env }}/firmware_merged_${BUILD_DATETIME}.bin
 
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ matrix.env }}
+          name: firmware-${{ matrix.env }}-${{ steps.timestamp.outputs.datetime }}
           path: artifacts/${{ matrix.env }}
 

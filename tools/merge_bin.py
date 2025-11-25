@@ -4,16 +4,15 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from SCons.Script import COMMAND_LINE_TARGETS
 
 APP_BIN = "$BUILD_DIR/${PROGNAME}.bin"
 LITTLEFS_BIN = "$BUILD_DIR/littlefs.bin"
 MERGED_BIN = "$BUILD_DIR/${PROGNAME}_merged.bin"
 BOARD_CONFIG = env.BoardConfig()
 DEFAULT_LFS_ADDRESS = "0x3d0000"
-SECRET_FILENAMES = (
-    "user_settings.secrets.json",
-    "user_settings.secrets.json.example",
-)
+SECRET_FILENAMES = ("secrets.json",)
+IS_UPLOADFS_TARGET = "uploadfs" in COMMAND_LINE_TARGETS
 
 
 @contextmanager
@@ -168,11 +167,11 @@ def merge_bin(source, target, env, **_kwargs):
     env.Execute(_format_command(cmd))
 
 
-env.AddPreAction(APP_BIN, build_littlefs)
-env.AddPostAction(APP_BIN, merge_bin)
-
-env.Replace(
-    UPLOADERFLAGS=["write_flash", "0x0", MERGED_BIN],
-    UPLOADCMD='"$PYTHONEXE" "$UPLOADER" $UPLOADERFLAGS',
-)
+if not IS_UPLOADFS_TARGET:
+    env.AddPreAction(APP_BIN, build_littlefs)
+    env.AddPostAction(APP_BIN, merge_bin)
+    env.Replace(
+        UPLOADERFLAGS=["write_flash", "0x0", MERGED_BIN],
+        UPLOADCMD='"$PYTHONEXE" "$UPLOADER" $UPLOADERFLAGS',
+    )
 
