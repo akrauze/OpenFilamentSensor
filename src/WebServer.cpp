@@ -11,6 +11,46 @@
 extern const char *firmwareVersion;
 extern const char *chipFamily;
 
+// Convert __DATE__ and __TIME__ to thumbprint format MMDDYYHHMMSS
+String getBuildThumbprint(const char* date, const char* time) {
+    // Parse __DATE__ format: "Nov 25 2025"
+    const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    char month_str[4] = {0};
+    int day, year;
+    sscanf(date, "%s %d %d", month_str, &day, &year);
+
+    int month = 1;
+    for (int i = 0; i < 12; i++) {
+        if (strcmp(month_str, months[i]) == 0) {
+            month = i + 1;
+            break;
+        }
+    }
+
+    // Parse __TIME__ format: "08:10:22"
+    int hour, minute, second;
+    sscanf(time, "%d:%d:%d", &hour, &minute, &second);
+
+    // Format as MMDDYYHHMMSS
+    char thumbprint[13];
+    snprintf(thumbprint, sizeof(thumbprint), "%02d%02d%02d%02d%02d%02d",
+             month, day, year % 100, hour, minute, second);
+    return String(thumbprint);
+}
+
+// Read filesystem build thumbprint from file
+String getFilesystemThumbprint() {
+    File file = SPIFFS.open("/build_timestamp.txt", "r");
+    if (!file) {
+        return "unknown";
+    }
+    String thumbprint = file.readStringUntil('\n');
+    file.close();
+    thumbprint.trim();
+    return thumbprint.length() > 0 ? thumbprint : "unknown";
+}
+
 WebServer::WebServer(int port) : server(port), statusEvents("/status_events") {}
 
 void WebServer::begin()
@@ -216,11 +256,13 @@ void WebServer::begin()
     server.on("/version", HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
-                  DynamicJsonDocument jsonDoc(256);
+                  DynamicJsonDocument jsonDoc(512);
                   jsonDoc["firmware_version"] = firmwareVersion;
                   jsonDoc["chip_family"]      = chipFamily;
                   jsonDoc["build_date"]       = __DATE__;
                   jsonDoc["build_time"]       = __TIME__;
+                  jsonDoc["firmware_thumbprint"] = getBuildThumbprint(__DATE__, __TIME__);
+                  jsonDoc["filesystem_thumbprint"] = getFilesystemThumbprint();
 
                   String jsonResponse;
                   serializeJson(jsonDoc, jsonResponse);

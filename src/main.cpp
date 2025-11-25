@@ -86,10 +86,13 @@ void failWifi()
 void startAPMode()
 {
     logger.log("Starting AP mode");
-    WiFi.softAP("ElegooXBTTSFS20", "elegooccsfs20");
+    WiFi.softAP("CentauriFilament.local");
     logger.logf("AP IP Address: %s", WiFi.softAPIP().toString().c_str());
-    // Stop mDNS as it's not needed in AP mode
-    MDNS.end();
+    // Start mDNS for AP mode
+    if (!MDNS.begin("centaurifilament"))
+    {
+        logger.log("Error setting up MDNS responder in AP mode!");
+    }
 }
 
 void handleSuccessfulWifiConnection()
@@ -110,7 +113,7 @@ void handleSuccessfulWifiConnection()
 
     // Start/restart mDNS for station mode
     MDNS.end();
-    if (!MDNS.begin("ccxsfs20"))
+    if (!MDNS.begin("centaurifilament"))
     {
         logger.log("Error setting up MDNS responder!");
     }
@@ -461,13 +464,16 @@ void loop()
 
     if (isWifiConnected)
     {
-        if (!isElegooSetup)
+        if (!isElegooSetup && settingsManager.getElegooIP().length() > 0)
         {
             elegooCC.setup();
             logger.log("Elegoo setup complete");
             isElegooSetup = true;
         }
-        elegooCC.loop();
+        if (isElegooSetup)
+        {
+            elegooCC.loop();
+        }
 
         if (!isNtpSetup)
         {
