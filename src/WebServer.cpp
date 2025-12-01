@@ -375,6 +375,8 @@ void WebServer::buildStatusJson(DynamicJsonDocument &jsonDoc, const printer_info
     elegoo["currentDeficitMm"]     = elegooStatus.currentDeficitMm;
     elegoo["deficitThresholdMm"]   = elegooStatus.deficitThresholdMm;
     elegoo["deficitRatio"]         = elegooStatus.deficitRatio;
+    elegoo["passRatio"]            = elegooStatus.passRatio;
+    elegoo["ratioThreshold"]       = settingsManager.getDetectionRatioThreshold();
     elegoo["hardJamPercent"]       = elegooStatus.hardJamPercent;
     elegoo["softJamPercent"]       = elegooStatus.softJamPercent;
     elegoo["movementPulses"]       = (uint32_t) elegooStatus.movementPulseCount;

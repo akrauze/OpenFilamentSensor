@@ -1187,6 +1187,7 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.currentDeficitMm     = jamState.deficit;
     info.deficitThresholdMm   = 0.0f;  // No longer used (was ratioThreshold * expectedDistance)
     info.deficitRatio         = jamState.deficit / (motionSensor.getExpectedDistance() > 0.1f ? motionSensor.getExpectedDistance() : 1.0f);
+    info.passRatio            = jamState.passRatio;
     info.hardJamPercent       = jamState.hardJamPercent;
     info.softJamPercent       = jamState.softJamPercent;
     info.movementPulseCount   = movementPulseCount;

@@ -2,310 +2,474 @@
 #include "Logger.h"
 #include "SettingsManager.h"
 
-JamDetector::JamDetector() {
-    state.jammed = false;
-    state.hardJamTriggered = false;
-    state.softJamTriggered = false;
-    state.hardJamPercent = 0.0f;
-    state.softJamPercent = 0.0f;
-    state.passRatio = 1.0f;
-    state.deficit = 0.0f;
-    state.graceState = GraceState::IDLE;
-    state.graceActive = false;
+// Global singletons (provided elsewhere)
 
-    hardJamAccumulatedMs = 0;
-    softJamAccumulatedMs = 0;
-    lastEvalMs = 0;
-    lastPulseCount = 0;
-    resumeGracePulseBaseline = 0;
-    resumeGraceActualBaseline = 0.0f;
-    jamPauseRequested = false;
-    wasInGrace = false;
-    smoothedDeficitRatio = 0.0f;
+namespace
+{
+    // Minimum windowed distance before we even try to declare a jam.
+    constexpr float MIN_HARD_WINDOW_MM       = 10.0f;
+    constexpr float MIN_SOFT_WINDOW_MM       = 8.0f;
+    constexpr float MIN_SOFT_DEFICIT_MM      = 4.0f;
+
+    // For rate-based detection (mm/s)
+    constexpr float MIN_EXPECTED_RATE_MM_S   = 0.4f;   // below this we consider it not really extruding
+    constexpr float MIN_RATE_FOR_RATIO_MM_S  = 0.2f;   // below this we just treat ratio as 1.0
+    constexpr float MIN_ACTUAL_RATE_MM_S     = 0.05f;  // basically no movement
+
+    constexpr float HARD_RATE_RATIO          = 0.25f;  // hard jam if sensor < 25% of expected
+    constexpr float HARD_RECOVERY_RATIO      = 0.75f;  // recovery once >= 75% of expected rate
+
+    // Smoothed "how bad is the deficit" purely for UI
+    constexpr float RATIO_SMOOTHING_ALPHA    = 0.08f;
+
+    // Resume grace: disable detection until we have moved enough again
+    constexpr float         RESUME_GRACE_15MM_THRESHOLD = 15.0f;  // ~15mm expected extrusion after resume
+    constexpr unsigned long RESUME_MIN_PULSES           = 5;      // or a few pulses, whichever comes first
+
+    // We do not let dt explode; caps keep rates reasonably stable
+    constexpr unsigned long MAX_EVAL_INTERVAL_MS        = 1000;
+    constexpr unsigned long DEFAULT_EVAL_INTERVAL_MS    = 1000;
 }
 
-void JamDetector::reset(unsigned long currentTimeMs) {
-    state.jammed = false;
-    state.hardJamTriggered = false;
-    state.softJamTriggered = false;
-    state.hardJamPercent = 0.0f;
-    state.softJamPercent = 0.0f;
-    state.passRatio = 1.0f;
-    state.deficit = 0.0f;
-    state.graceState = GraceState::START_GRACE;
-    state.graceActive = true;
-
-    hardJamAccumulatedMs = 0;
-    softJamAccumulatedMs = 0;
-    lastEvalMs = currentTimeMs;
-    lastPulseCount = 0;
-    jamPauseRequested = false;
-    wasInGrace = true;
-    smoothedDeficitRatio = 0.0f;
+JamDetector::JamDetector()
+{
+    reset(0);
 }
 
-void JamDetector::onResume(unsigned long currentTimeMs, unsigned long currentPulseCount, float currentActualMm) {
-    state.graceState = GraceState::RESUME_GRACE;
+void JamDetector::reset(unsigned long currentTimeMs)
+{
+    (void)currentTimeMs;
+
+    state.jammed               = false;
+    state.hardJamTriggered     = false;
+    state.softJamTriggered     = false;
+    state.hardJamPercent       = 0.0f;
+    state.softJamPercent       = 0.0f;
+    state.passRatio            = 1.0f;
+    state.deficit              = 0.0f;
+    state.expectedRateMmPerSec = 0.0f;
+    state.actualRateMmPerSec   = 0.0f;
+    state.graceState           = GraceState::IDLE;
+    state.graceActive          = false;
+
+    hardJamAccumulatedMs       = 0;
+    softJamAccumulatedMs       = 0;
+    lastEvalMs                 = 0;
+    lastPulseCount             = 0;
+    resumeGracePulseBaseline   = 0;
+    resumeGraceActualBaseline  = 0.0f;
+    resumeGraceStartTimeMs     = 0;
+    prevExpectedDistance       = 0.0f;
+    prevActualDistance         = 0.0f;
+    jamPauseRequested          = false;
+    wasInGrace                 = false;
+    smoothedDeficitRatio       = 0.0f;
+}
+
+void JamDetector::onResume(unsigned long currentTimeMs,
+                           unsigned long currentPulseCount,
+                           float         currentActualMm)
+{
+    state.graceState  = GraceState::RESUME_GRACE;
     state.graceActive = true;
-    resumeGracePulseBaseline = currentPulseCount;
+
+    resumeGracePulseBaseline  = currentPulseCount;
     resumeGraceActualBaseline = currentActualMm;
-    resumeGraceStartTimeMs = currentTimeMs;
-    jamPauseRequested = false;
+    resumeGraceStartTimeMs    = currentTimeMs;
 
-    // Reset jam accumulators on resume
-    hardJamAccumulatedMs = 0;
-    softJamAccumulatedMs = 0;
-    state.hardJamPercent = 0.0f;
-    state.softJamPercent = 0.0f;
-
-    lastEvalMs = currentTimeMs;
+    // Clear existing jam accumulation so we do not instantly re-trigger
+    hardJamAccumulatedMs   = 0;
+    softJamAccumulatedMs   = 0;
+    state.hardJamPercent   = 0.0f;
+    state.softJamPercent   = 0.0f;
+    state.jammed           = false;
+    state.hardJamTriggered = false;
+    state.softJamTriggered = false;
 }
 
-bool JamDetector::evaluateGraceState(unsigned long currentTimeMs, unsigned long printStartTimeMs,
-                                     float expectedDistance, unsigned long movementPulseCount,
-                                     const JamConfig& config) {
-    // Handle different grace states
-    switch (state.graceState) {
+bool JamDetector::evaluateGraceState(unsigned long currentTimeMs,
+                                     unsigned long printStartTimeMs,
+                                     float         expectedDistance,
+                                     unsigned long movementPulseCount,
+                                     const JamConfig& config)
+{
+    switch (state.graceState)
+    {
         case GraceState::IDLE:
-            return false;  // No grace when idle
+            state.graceActive = false;
+            return false;
 
-        case GraceState::START_GRACE: {
-            // Time-based grace after print start
-            unsigned long timeSinceStart = currentTimeMs - printStartTimeMs;
-            if (timeSinceStart < config.startTimeoutMs) {
-                return true;  // Still in startup timeout
+        case GraceState::START_GRACE:
+        {
+            unsigned long sinceStart = currentTimeMs - printStartTimeMs;
+
+            // Startup timeout: SDCP can be messy right after print start
+            if (sinceStart < config.startTimeoutMs)
+            {
+                state.graceActive = true;
+                return true;
             }
-            if (timeSinceStart < config.graceTimeMs) {
-                return true;  // Still in grace period
+
+            // Grace window after timeout, regardless of flow
+            if (sinceStart < config.graceTimeMs)
+            {
+                state.graceActive = true;
+                return true;
             }
-            // Grace expired, transition to ACTIVE
-            state.graceState = GraceState::ACTIVE;
+
+            // Enough time has passed; go active
+            state.graceState  = GraceState::ACTIVE;
+            state.graceActive = false;
             return false;
         }
 
-        case GraceState::RESUME_GRACE: {
-            // Check if we've seen 3 pulses since resume
-            bool fivePulsesSeen = (movementPulseCount >= resumeGracePulseBaseline + 5);
+        case GraceState::RESUME_GRACE:
+        {
+            // Conditions to exit resume grace: enough pulses, enough expected distance, or timeout
+            bool enoughPulses   = (movementPulseCount >= resumeGracePulseBaseline + RESUME_MIN_PULSES);
+            bool enoughExpected = (expectedDistance >= RESUME_GRACE_15MM_THRESHOLD);
+            unsigned long sinceResume = currentTimeMs - resumeGraceStartTimeMs;
+            bool timeExceeded  = (sinceResume >= config.graceTimeMs);
 
-            // Check if 15mm expected has built up since resume
-            bool expected15mmBuilt = (expectedDistance >= RESUME_GRACE_15MM_THRESHOLD);
-
-            // Check if 6 seconds has passed since resume
-            unsigned long timeSinceResume = currentTimeMs - resumeGraceStartTimeMs;
-            bool sixSecondsPassed = (timeSinceResume >= RESUME_GRACE_6SEC_TIMEOUT);
-
-            // Clear grace if five pulses seen (filament is moving) or 15mm expected built and 6 seconds passed (filament should have been moving, need to reevaluate)
-            if (fivePulsesSeen || expected15mmBuilt && sixSecondsPassed) {
-                state.graceState = GraceState::ACTIVE;
-                return false;
+            if (!enoughPulses && !enoughExpected && !timeExceeded)
+            {
+                state.graceActive = true;
+                return true;  // stay in grace
             }
 
-            return true;  // Still in resume grace
+            state.graceState  = GraceState::ACTIVE;
+            state.graceActive = false;
+            return false;
         }
 
         case GraceState::ACTIVE:
-            return false;  // No grace, actively detecting
+            state.graceActive = false;
+            return false;
 
         case GraceState::JAMMED:
-            return false;  // Already jammed, no grace
+            // Jammed is latched; no special grace
+            state.graceActive = false;
+            return false;
     }
 
+    state.graceActive = false;
     return false;
 }
 
-bool JamDetector::evaluateHardJam(float expectedDistance, float passRatio,
-                                  bool newPulseSinceLastEval, unsigned long elapsedMs,
-                                  const JamConfig& config) {
-    // Use configurable hard jam window if provided, otherwise fall back
-    // to the built-in minimum window size.
-    float minHardWindow = (config.hardJamMm > 0.0f) ? config.hardJamMm : MIN_HARD_WINDOW_MM;
+bool JamDetector::evaluateHardJam(float         expectedDistance,
+                                  float         passRatio,
+                                  float         expectedRate,
+                                  float         actualRate,
+                                  unsigned long elapsedMs,
+                                  const JamConfig& config)
+{
+    // Hard jam if:
+    //  - we are really extruding
+    //  - window has enough distance to be meaningful
+    //  - sensor rate is tiny
+    //  - rate ratio is very low
+    bool extrudingNow = (expectedRate >= MIN_EXPECTED_RATE_MM_S);
 
-    // Hard jam = essentially no movement over a sufficiently large window.
-    // Require both:
-    //  - expectedDistance above the configured hard jam window, and
-    //  - pass ratio below the hard jam threshold, and
-    //  - no new pulses since the last evaluation.
-    bool hardCondition = (expectedDistance >= minHardWindow) &&
-                         (passRatio < HARD_PASS_THRESHOLD) &&
-                         !newPulseSinceLastEval;
+    bool hardCondition =
+        extrudingNow &&
+        (expectedDistance >= MIN_HARD_WINDOW_MM) &&
+        (actualRate < MIN_ACTUAL_RATE_MM_S) &&
+        (passRatio < HARD_RATE_RATIO);
 
-    if (hardCondition) {
-        // Accumulate hard jam time
+    if (hardCondition)
+    {
         hardJamAccumulatedMs += elapsedMs;
-        if (hardJamAccumulatedMs > config.hardJamTimeMs) {
+        if (hardJamAccumulatedMs > config.hardJamTimeMs)
+        {
             hardJamAccumulatedMs = config.hardJamTimeMs;
         }
-    } else if (newPulseSinceLastEval ||
-               passRatio >= HARD_RECOVERY_RATIO ||
-               expectedDistance < (minHardWindow * 0.5f)) {
-        // Recovery: any new pulse, good flow, or low expected distance
-        hardJamAccumulatedMs = 0;
+    }
+    else
+    {
+        // Recovery: once we are back to good flow, clear
+        if (passRatio >= HARD_RECOVERY_RATIO || !extrudingNow)
+        {
+            hardJamAccumulatedMs = 0;
+        }
     }
 
-    // Calculate percentage
-    if (config.hardJamTimeMs > 0) {
-        state.hardJamPercent = (100.0f * (float)hardJamAccumulatedMs) / (float)config.hardJamTimeMs;
-        if (state.hardJamPercent > 100.0f) state.hardJamPercent = 100.0f;
-    } else {
-        state.hardJamPercent = 0.0f;
+    if (config.hardJamTimeMs > 0)
+    {
+        state.hardJamPercent =
+            (100.0f * static_cast<float>(hardJamAccumulatedMs) /
+             static_cast<float>(config.hardJamTimeMs));
+    }
+    else
+    {
+        state.hardJamPercent = hardCondition ? 100.0f : 0.0f;
     }
 
-    // Trigger if accumulated time exceeds threshold
     return (hardJamAccumulatedMs >= config.hardJamTimeMs);
 }
 
-bool JamDetector::evaluateSoftJam(float expectedDistance, float deficit, float passRatio,
-                                  unsigned long elapsedMs, const JamConfig& config) {
-    bool softCondition = (expectedDistance >= MIN_SOFT_WINDOW_MM) &&
-                        (deficit >= MIN_SOFT_DEFICIT_MM) &&
-                        (passRatio < config.ratioThreshold);
+bool JamDetector::evaluateSoftJam(float         expectedDistance,
+                                  float         deficit,
+                                  float         passRatio,
+                                  float         expectedRate,
+                                  float         actualRate,
+                                  unsigned long elapsedMs,
+                                  const JamConfig& config)
+{
+    (void)actualRate;  // not strictly needed, but kept for future tuning
 
-    if (softCondition) {
-        // Accumulate soft jam time
+    bool extrudingNow = (expectedRate >= MIN_EXPECTED_RATE_MM_S);
+
+    // Soft jam: we are extruding, deficit is slowly growing, and ratio is below threshold
+    bool softCondition =
+        extrudingNow &&
+        (expectedDistance >= MIN_SOFT_WINDOW_MM) &&
+        (deficit >= MIN_SOFT_DEFICIT_MM) &&
+        (passRatio < config.ratioThreshold);
+
+    if (softCondition)
+    {
         softJamAccumulatedMs += elapsedMs;
-        if (softJamAccumulatedMs > config.softJamTimeMs) {
+        if (softJamAccumulatedMs > config.softJamTimeMs)
+        {
             softJamAccumulatedMs = config.softJamTimeMs;
         }
-    } else if (passRatio >= config.ratioThreshold * 0.85f) {
-        // Recovery: flow improved to 85% of threshold
-        softJamAccumulatedMs = 0;
+    }
+    else
+    {
+        // Recovery: flow improved significantly
+        if (passRatio >= config.ratioThreshold * 0.85f || !extrudingNow)
+        {
+            softJamAccumulatedMs = 0;
+        }
     }
 
-    // Calculate percentage
-    if (config.softJamTimeMs > 0) {
-        state.softJamPercent = (100.0f * (float)softJamAccumulatedMs) / (float)config.softJamTimeMs;
-        if (state.softJamPercent > 100.0f) state.softJamPercent = 100.0f;
-    } else {
-        state.softJamPercent = 0.0f;
+    if (config.softJamTimeMs > 0)
+    {
+        state.softJamPercent =
+            (100.0f * static_cast<float>(softJamAccumulatedMs) /
+             static_cast<float>(config.softJamTimeMs));
+    }
+    else
+    {
+        state.softJamPercent = softCondition ? 100.0f : 0.0f;
     }
 
-    // Trigger if accumulated time exceeds threshold
     return (softJamAccumulatedMs >= config.softJamTimeMs);
 }
 
-JamState JamDetector::update(float expectedDistance, float actualDistance,
-                             unsigned long movementPulseCount, bool isPrinting,
-                             bool hasTelemetry, unsigned long currentTimeMs,
-                             unsigned long printStartTimeMs, const JamConfig& config) {
-    // If not printing or no telemetry, reset to IDLE
-    if (!isPrinting || !hasTelemetry) {
-        if (state.graceState != GraceState::IDLE) {
-            state.graceState = GraceState::IDLE;
-            state.graceActive = false;
-            state.jammed = false;
-            hardJamAccumulatedMs = 0;
-            softJamAccumulatedMs = 0;
+JamState JamDetector::update(float         expectedDistance,
+                             float         actualDistance,
+                             unsigned long movementPulseCount,
+                             bool          isPrinting,
+                             bool          hasTelemetry,
+                             unsigned long currentTimeMs,
+                             unsigned long printStartTimeMs,
+                             const JamConfig& config)
+{
+    // If not printing or no telemetry, reset to idle-ish state
+    if (!isPrinting || !hasTelemetry)
+    {
+        if (state.graceState != GraceState::IDLE)
+        {
+            state.graceState       = GraceState::IDLE;
+            state.graceActive      = false;
+            state.jammed           = false;
+            state.hardJamTriggered = false;
+            state.softJamTriggered = false;
+            hardJamAccumulatedMs   = 0;
+            softJamAccumulatedMs   = 0;
         }
+
+        lastEvalMs               = currentTimeMs;
+        prevExpectedDistance     = expectedDistance;
+        prevActualDistance       = actualDistance;
+        state.expectedRateMmPerSec = 0.0f;
+        state.actualRateMmPerSec   = 0.0f;
+        wasInGrace               = false;
         return state;
     }
 
     // Calculate elapsed time since last evaluation
     unsigned long elapsedMs;
-    if (lastEvalMs == 0) {
-        elapsedMs = 1000;  // First evaluation, use 1 second
-    } else {
+    if (lastEvalMs == 0)
+    {
+        elapsedMs = DEFAULT_EVAL_INTERVAL_MS;
+    }
+    else
+    {
         elapsedMs = currentTimeMs - lastEvalMs;
-        if (elapsedMs > 1000) {
-            elapsedMs = 1000;  // Cap at 1 second
+        if (elapsedMs > MAX_EVAL_INTERVAL_MS)
+        {
+            elapsedMs = MAX_EVAL_INTERVAL_MS;
         }
-        if (elapsedMs == 0) {
-            elapsedMs = 1;  // Minimum 1ms
+        if (elapsedMs == 0)
+        {
+            elapsedMs = 1;  // avoid division by zero
         }
     }
     lastEvalMs = currentTimeMs;
 
-    // Calculate metrics
+    // First derivative: compute rates from windowed distances
+    float dtSec = static_cast<float>(elapsedMs) / 1000.0f;
+    float dExp  = expectedDistance - prevExpectedDistance;
+    float dAct  = actualDistance   - prevActualDistance;
+
+    // Handle retractions / window resets: treat negative deltas as zero flow
+    if (dExp < 0.0f) dExp = 0.0f;
+    if (dAct < 0.0f) dAct = 0.0f;
+
+    float expectedRate = (dtSec > 0.0f) ? (dExp / dtSec) : 0.0f;  // mm/s
+    float actualRate   = (dtSec > 0.0f) ? (dAct / dtSec) : 0.0f;  // mm/s
+
+    prevExpectedDistance = expectedDistance;
+    prevActualDistance   = actualDistance;
+
+    // Expose rates for callers / logging
+    state.expectedRateMmPerSec = expectedRate;
+    state.actualRateMmPerSec   = actualRate;
+
+    // Rate-based pass ratio
+    float passRatio;
+    if (expectedRate > MIN_RATE_FOR_RATIO_MM_S)
+    {
+        // expectedRate is guaranteed > 0 here
+        passRatio = actualRate / expectedRate;
+    }
+    else
+    {
+        // When flow is tiny, treat as OK to avoid noise on drip moves
+        passRatio = 1.0f;
+    }
+
+    if (passRatio < 0.0f) passRatio = 0.0f;
+    if (passRatio > 1.5f) passRatio = 1.5f;
+
+    // Distance-based deficit (still useful for UI + soft jam gating)
     float deficit = expectedDistance - actualDistance;
     if (deficit < 0.0f) deficit = 0.0f;
 
-    float passRatio = (expectedDistance > 0.0f) ? (actualDistance / expectedDistance) : 1.0f;
-    if (passRatio < 0.0f) passRatio = 0.0f;
+    // For UI: smooth a deficit ratio (distance-based) so the graph is not jumpy
+    float deficitRatioValue =
+        (expectedDistance > 1.0f) ? (deficit / expectedDistance) : 0.0f;
+    smoothedDeficitRatio =
+        RATIO_SMOOTHING_ALPHA * deficitRatioValue +
+        (1.0f - RATIO_SMOOTHING_ALPHA) * smoothedDeficitRatio;
 
-    float deficitRatioValue = (expectedDistance > 1.0f) ? (deficit / expectedDistance) : 0.0f;
+    // Update state metrics exposed externally
+    state.passRatio = passRatio;   // rate-based
+    state.deficit   = deficit;     // windowed (distance-based)
 
-    // Apply EWMA smoothing to deficit ratio for display
-    smoothedDeficitRatio = RATIO_SMOOTHING_ALPHA * deficitRatioValue +
-                          (1.0f - RATIO_SMOOTHING_ALPHA) * smoothedDeficitRatio;
-
-    // Update state metrics
-    state.passRatio = passRatio;
-    state.deficit = deficit;
-
-    // Check if we're in grace period
-    bool graceActive = evaluateGraceState(currentTimeMs, printStartTimeMs,
-                                         expectedDistance, movementPulseCount, config);
-    state.graceActive = graceActive;
-
-    // Log grace period transitions
-    if (graceActive != wasInGrace && settingsManager.getVerboseLogging()) {
-        if (graceActive) {
-            logger.logf("Grace period ACTIVE (state=%d)", (int)state.graceState);
-        } else {
-            logger.log("Grace period CLEARED - jam detection ENABLED");
-        }
+    // Initialize grace state at print start if needed
+    if (state.graceState == GraceState::IDLE)
+    {
+        state.graceState  = GraceState::START_GRACE;
+        state.graceActive = true;
     }
-    wasInGrace = graceActive;
 
-    // Reset accumulators during grace period
-    if (graceActive) {
-        hardJamAccumulatedMs = 0;
-        softJamAccumulatedMs = 0;
-        state.hardJamPercent = 0.0f;
-        state.softJamPercent = 0.0f;
-        state.jammed = false;
+    // Evaluate grace; if active, suppress jam accumulation completely
+    bool graceActive = evaluateGraceState(currentTimeMs,
+                                          printStartTimeMs,
+                                          expectedDistance,
+                                          movementPulseCount,
+                                          config);
+
+    if (graceActive)
+    {
+        hardJamAccumulatedMs   = 0;
+        softJamAccumulatedMs   = 0;
+        state.hardJamPercent   = 0.0f;
+        state.softJamPercent   = 0.0f;
+        state.jammed           = false;
         state.hardJamTriggered = false;
         state.softJamTriggered = false;
+
+        wasInGrace = true;
         return state;
     }
 
-    // Detect new pulses since last evaluation
-    bool newPulseSinceLastEval = (movementPulseCount != lastPulseCount);
-    lastPulseCount = movementPulseCount;
-
-    // Evaluate jam conditions (only when not in grace)
+    // At this point, we are fully active
     bool allowHard = (config.detectionMode != DetectionMode::SOFT_ONLY);
     bool allowSoft = (config.detectionMode != DetectionMode::HARD_ONLY);
 
-    if (allowHard) {
-        state.hardJamTriggered = evaluateHardJam(expectedDistance, passRatio,
-                                                 newPulseSinceLastEval, elapsedMs, config);
-    } else {
-        hardJamAccumulatedMs = 0;
-        state.hardJamPercent = 0.0f;
+    if (allowHard)
+    {
+        state.hardJamTriggered =
+            evaluateHardJam(expectedDistance,
+                            passRatio,
+                            expectedRate,
+                            actualRate,
+                            elapsedMs,
+                            config);
+    }
+    else
+    {
+        hardJamAccumulatedMs   = 0;
+        state.hardJamPercent   = 0.0f;
         state.hardJamTriggered = false;
     }
 
-    if (allowSoft) {
-        state.softJamTriggered = evaluateSoftJam(expectedDistance, deficit, passRatio,
-                                                 elapsedMs, config);
-    } else {
-        softJamAccumulatedMs = 0;
-        state.softJamPercent = 0.0f;
+    if (allowSoft)
+    {
+        state.softJamTriggered =
+            evaluateSoftJam(expectedDistance,
+                            deficit,
+                            passRatio,
+                            expectedRate,
+                            actualRate,
+                            elapsedMs,
+                            config);
+    }
+    else
+    {
+        softJamAccumulatedMs   = 0;
+        state.softJamPercent   = 0.0f;
         state.softJamTriggered = false;
     }
 
-    // Update jammed state
     bool wasJammed = state.jammed;
-    state.jammed = state.hardJamTriggered || state.softJamTriggered;
+    state.jammed   = state.hardJamTriggered || state.softJamTriggered;
 
-    // Log jam state changes
-    if (state.jammed && !wasJammed && settingsManager.getVerboseLogging()) {
+    // Logging on jam transitions (kept conservative to avoid spam)
+    if (state.jammed && !wasJammed && settingsManager.getVerboseLogging())
+    {
         const char* jamType = "soft";
-        if (state.hardJamTriggered && state.softJamTriggered) {
+        if (state.hardJamTriggered && state.softJamTriggered)
+        {
             jamType = "hard+soft";
-        } else if (state.hardJamTriggered) {
+        }
+        else if (state.hardJamTriggered)
+        {
             jamType = "hard";
         }
-        logger.logf("Filament jam detected (%s)! Expected %.2fmm, sensor %.2fmm, deficit %.2fmm ratio=%.2f",
-                   jamType, expectedDistance, actualDistance, deficit, deficitRatioValue);
-    } else if (!state.jammed && wasJammed && !jamPauseRequested) {
+
+        logger.logf(
+            "Filament jam detected (%s)! "
+            "win_exp=%.2f win_sns=%.2f deficit=%.2f "
+            "rate_exp=%.3f rate_sns=%.3f pass=%.2f",
+            jamType,
+            expectedDistance,
+            actualDistance,
+            deficit,
+            expectedRate,
+            actualRate,
+            passRatio);
+    }
+    else if (!state.jammed && wasJammed && !jamPauseRequested)
+    {
         logger.log("Filament flow resumed");
     }
 
-    // Transition to JAMMED state if needed
-    if (state.jammed && state.graceState == GraceState::ACTIVE) {
+    // If jam is latched, reflect that in graceState
+    if (state.jammed)
+    {
         state.graceState = GraceState::JAMMED;
     }
+    else if (state.graceState == GraceState::JAMMED)
+    {
+        // Recovery from jam -> back to ACTIVE
+        state.graceState = GraceState::ACTIVE;
+    }
 
+    wasInGrace = false;
     return state;
 }

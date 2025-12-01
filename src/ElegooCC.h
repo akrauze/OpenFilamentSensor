@@ -99,6 +99,7 @@ typedef struct
     float               currentDeficitMm;
     float               deficitThresholdMm;
     float               deficitRatio;
+    float               passRatio;
     float               hardJamPercent;
     float               softJamPercent;
     unsigned long       movementPulseCount;
