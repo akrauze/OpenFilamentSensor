@@ -7,6 +7,7 @@
 struct FilamentSample
 {
     unsigned long timestampMs;
+    unsigned long durationMs;
     float         expectedMm;
     float         actualMm;
 };
@@ -56,6 +57,11 @@ class FilamentMotionSensor
      * @return Actual distance in mm
      */
     float getSensorDistance();
+
+    /**
+     * Get the average expected and actual rates within the tracking window.
+     */
+    void getWindowedRates(float &expectedRate, float &actualRate);
 
     /**
      * Check if tracking has been initialized with first telemetry

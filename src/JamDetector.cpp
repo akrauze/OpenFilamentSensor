@@ -29,6 +29,7 @@ namespace
     // We do not let dt explode; caps keep rates reasonably stable
     constexpr unsigned long MAX_EVAL_INTERVAL_MS        = 1000;
     constexpr unsigned long DEFAULT_EVAL_INTERVAL_MS    = 1000;
+    constexpr bool          USE_WINDOWED_RATE_SAMPLES   = true;
 }
 
 JamDetector::JamDetector()
@@ -264,7 +265,9 @@ JamState JamDetector::update(float         expectedDistance,
                              bool          hasTelemetry,
                              unsigned long currentTimeMs,
                              unsigned long printStartTimeMs,
-                             const JamConfig& config)
+                             const JamConfig& config,
+                             float         windowedExpectedRateMmPerSec,
+                             float         windowedActualRateMmPerSec)
 {
     // If not printing or no telemetry, reset to idle-ish state
     if (!isPrinting || !hasTelemetry)
@@ -309,20 +312,33 @@ JamState JamDetector::update(float         expectedDistance,
     }
     lastEvalMs = currentTimeMs;
 
-    // First derivative: compute rates from windowed distances
-    float dtSec = static_cast<float>(elapsedMs) / 1000.0f;
-    float dExp  = expectedDistance - prevExpectedDistance;
-    float dAct  = actualDistance   - prevActualDistance;
+    float expectedRate = 0.0f;
+    float actualRate   = 0.0f;
 
-    // Handle retractions / window resets: treat negative deltas as zero flow
-    if (dExp < 0.0f) dExp = 0.0f;
-    if (dAct < 0.0f) dAct = 0.0f;
+    if constexpr (!USE_WINDOWED_RATE_SAMPLES)
+    {
+        // First derivative: compute rates from windowed distances
+        float dtSec = static_cast<float>(elapsedMs) / 1000.0f;
+        float dExp  = expectedDistance - prevExpectedDistance;
+        float dAct  = actualDistance   - prevActualDistance;
 
-    float expectedRate = (dtSec > 0.0f) ? (dExp / dtSec) : 0.0f;  // mm/s
-    float actualRate   = (dtSec > 0.0f) ? (dAct / dtSec) : 0.0f;  // mm/s
+        // Handle retractions / window resets: treat negative deltas as zero flow
+        if (dExp < 0.0f) dExp = 0.0f;
+        if (dAct < 0.0f) dAct = 0.0f;
 
-    prevExpectedDistance = expectedDistance;
-    prevActualDistance   = actualDistance;
+        expectedRate = (dtSec > 0.0f) ? (dExp / dtSec) : 0.0f;  // mm/s
+        actualRate   = (dtSec > 0.0f) ? (dAct / dtSec) : 0.0f;  // mm/s
+
+        prevExpectedDistance = expectedDistance;
+        prevActualDistance   = actualDistance;
+    }
+    else
+    {
+        expectedRate        = windowedExpectedRateMmPerSec;
+        actualRate          = windowedActualRateMmPerSec;
+        prevExpectedDistance = expectedDistance;
+        prevActualDistance   = actualDistance;
+    }
 
     // Expose rates for callers / logging
     state.expectedRateMmPerSec = expectedRate;

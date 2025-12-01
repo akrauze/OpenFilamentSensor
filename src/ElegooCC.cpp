@@ -564,6 +564,7 @@ bool ElegooCC::processFilamentTelemetry(JsonObject &printInfo, unsigned long cur
                 windowedSensor != lastLoggedActual ||
                 currentDeficit != lastLoggedDeficit)
             {
+                JamState jamState = jamDetector.getState();
                 // Consolidated telemetry log with jam state info
                 logger.logf("Debug: sdcp_exp=%.2fmm cumul_sns=%.2fmm pulses=%lu | win_exp=%.2f win_sns=%.2f deficit=%.2f | jam=%d hard=%.2f soft=%.2f pass=%.2f grace=%d heap=%lu",
                             expectedFilamentMM, actualFilamentMM, movementPulseCount,
@@ -1022,12 +1023,16 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     // Get windowed distances from motion sensor
     float expectedDistance = motionSensor.getExpectedDistance();
     float actualDistance = motionSensor.getSensorDistance();
+    float windowedExpectedRate = 0.0f;
+    float windowedActualRate = 0.0f;
+    motionSensor.getWindowedRates(windowedExpectedRate, windowedActualRate);
 
     // Update jam detector and get current state
     JamState jamState = jamDetector.update(
         expectedDistance, actualDistance, movementPulseCount,
         currentlyPrinting, expectedTelemetryAvailable,
-        currentTime, startedAt, jamConfig
+        currentTime, startedAt, jamConfig,
+        windowedExpectedRate, windowedActualRate
     );
 
     // Periodic consolidated logging with all telemetry data + memory monitoring

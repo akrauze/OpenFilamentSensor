@@ -316,6 +316,15 @@
             user-select: none;
         }
 
+        .debug-field {
+            cursor: default;
+        }
+
+        .debug-field:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
         .status-item.active-help {
             border-color: var(--accent-primary);
             box-shadow: var(--shadow-md);
@@ -860,6 +869,7 @@
                 </div>
                 <nav>
                     <button class="nav-btn active" data-page="status">Status</button>
+                    <button class="nav-btn" data-page="debug">DEBUG</button>
                     <button class="nav-btn" data-page="settings">⚙️ Settings</button>
                     <button class="nav-btn" data-page="logs">Logs</button>
                     <button class="nav-btn" data-page="update">Update</button>
@@ -960,6 +970,19 @@
                             100% = Soft jam threshold reached
                         </p>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Page -->
+        <div id="debug" class="page">
+            <div class="card">
+                <div class="card-header">
+                    <span>Debug Data Dump</span>
+                    <small style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 12px;">Every field from the status snapshot</small>
+                </div>
+                <div class="status-grid" id="debugGrid">
+                    <!-- Populated by JavaScript -->
                 </div>
             </div>
         </div>
@@ -1318,6 +1341,7 @@
                 const response = await fetch('/sensor_status');
                 const data = await response.json();
                 renderStatusData(data);
+                renderDebugData(data);
                 return data;
             } catch (error) {
                 if (suppressToast) {
@@ -1460,6 +1484,49 @@
             attachStatusHelp();
             setStatusHelpMessage(currentStatusHelpKey || 'default');
             updateRefreshState(!!printerConnected, printStatus);
+        }
+
+        function formatDebugLabel(key) {
+            if (!key) return 'Unknown';
+            const spaced = key
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/_/g, ' ')
+                .trim();
+            return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+        }
+
+        function formatDebugValue(value) {
+            if (value === null || value === undefined) return '—';
+            if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+            if (typeof value === 'number') {
+                return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+            }
+            return value.toString();
+        }
+
+        function renderDebugData(data) {
+            const grid = document.getElementById('debugGrid');
+            if (!grid) return;
+
+            const rows = [];
+            const appendRow = (label, value) => {
+                rows.push(`
+                    <div class="status-item debug-field">
+                        <div class="status-label">${formatDebugLabel(label)}</div>
+                        <div class="status-value">${formatDebugValue(value)}</div>
+                    </div>
+                `);
+            };
+
+            appendRow('mac', data.mac);
+            appendRow('ip', data.ip);
+            appendRow('stopped', data.stopped);
+            appendRow('filamentRunout', data.filamentRunout);
+            if (data.elegoo) {
+                Object.entries(data.elegoo).forEach(([key, value]) => appendRow(key, value));
+            }
+
+            grid.innerHTML = rows.join('');
         }
 
         function requestStatusSnapshot(force = false) {

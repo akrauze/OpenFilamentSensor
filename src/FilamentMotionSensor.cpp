@@ -22,6 +22,7 @@ void FilamentMotionSensor::reset()
         samples[i].timestampMs = 0;
         samples[i].expectedMm  = 0.0f;
         samples[i].actualMm    = 0.0f;
+        samples[i].durationMs  = 0;
     }
 
     lastSensorPulseMs = millis();  // Initialize to current time
@@ -136,10 +137,27 @@ void FilamentMotionSensor::addSample(float expectedDeltaMm, float actualDeltaMm)
     // Prune old samples first
     pruneOldSamples();
 
+    if (sampleCount > 0)
+    {
+        int previousIndex = (nextSampleIndex - 1 + MAX_SAMPLES) % MAX_SAMPLES;
+        unsigned long prevTimestamp = samples[previousIndex].timestampMs;
+        unsigned long duration = currentTime - prevTimestamp;
+        if (duration == 0)
+        {
+            duration = 1;
+        }
+        if (duration > windowSizeMs)
+        {
+            duration = windowSizeMs;
+        }
+        samples[previousIndex].durationMs = duration;
+    }
+
     // Add new sample
     samples[nextSampleIndex].timestampMs = currentTime;
     samples[nextSampleIndex].expectedMm  = expectedDeltaMm;
     samples[nextSampleIndex].actualMm    = actualDeltaMm;
+    samples[nextSampleIndex].durationMs  = 0;
 
     nextSampleIndex = (nextSampleIndex + 1) % MAX_SAMPLES;
     if (sampleCount < MAX_SAMPLES)
@@ -235,6 +253,61 @@ float FilamentMotionSensor::getSensorDistance()
     float expectedMm, actualMm;
     getWindowedDistances(expectedMm, actualMm);
     return actualMm;
+}
+
+void FilamentMotionSensor::getWindowedRates(float &expectedRate, float &actualRate)
+{
+    expectedRate = 0.0f;
+    actualRate = 0.0f;
+
+    pruneOldSamples();
+    if (sampleCount == 0)
+    {
+        return;
+    }
+
+    unsigned long now = millis();
+    unsigned long totalDurationMs = 0;
+    float expectedSum = 0.0f;
+    float actualSum = 0.0f;
+
+    for (int i = 0; i < sampleCount; i++)
+    {
+        int idx = (nextSampleIndex - sampleCount + i + MAX_SAMPLES) % MAX_SAMPLES;
+        unsigned long duration = samples[idx].durationMs;
+        if (duration == 0)
+        {
+            duration = (now > samples[idx].timestampMs)
+                           ? (now - samples[idx].timestampMs)
+                           : 1;
+        }
+        if (duration == 0)
+        {
+            continue;
+        }
+        if (duration > windowSizeMs)
+        {
+            duration = windowSizeMs;
+        }
+
+        expectedSum += samples[idx].expectedMm;
+        actualSum   += samples[idx].actualMm;
+        totalDurationMs += duration;
+    }
+
+    if (totalDurationMs == 0)
+    {
+        return;
+    }
+
+    float durationSec = static_cast<float>(totalDurationMs) / 1000.0f;
+    if (durationSec <= 0.0f)
+    {
+        return;
+    }
+
+    expectedRate = expectedSum / durationSec;
+    actualRate   = actualSum / durationSec;
 }
 
 bool FilamentMotionSensor::isInitialized() const

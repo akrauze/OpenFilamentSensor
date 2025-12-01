@@ -98,7 +98,9 @@ public:
                     bool               hasTelemetry,
                     unsigned long      currentTimeMs,
                     unsigned long      printStartTimeMs,
-                    const JamConfig&   config);
+                    const JamConfig&   config,
+                    float              expectedRateMmPerSec,
+                    float              actualRateMmPerSec);
 
     /**
      * Get current state.
@@ -175,4 +177,3 @@ private:
 };
 
 #endif  // JAM_DETECTOR_IFACE_H
-
