@@ -304,6 +304,62 @@
             gap: 20px;
         }
 
+        .debug-chart-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 24px;
+        }
+
+        .chart-panel {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(30, 35, 48, 0.8));
+            border-radius: 18px;
+            border: 1px solid var(--border-color);
+            padding: 18px 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .chart-panel-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .chart-panel .chart-container {
+            height: 220px;
+            margin-top: 10px;
+        }
+
+        .jam-bar-track {
+            position: relative;
+            width: 100%;
+            height: 32px;
+            background: var(--bg-primary);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .jam-bar-track .jam-peak-mark {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: rgba(255, 255, 255, 0.7);
+            opacity: 0.8;
+            transition: left 0.2s ease;
+        }
+
+        .jam-peak-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
         .status-item {
             background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(30, 35, 48, 0.5) 100%);
             padding: 24px;
@@ -903,72 +959,22 @@
                 </div>
             </div>
 
-            <div style="display: flex; flex-direction: column; gap: 20px; margin-top: 20px;">
-                <div class="card" style="margin-bottom: 0;">
-                    <div class="card-header" style="font-size: 1.2rem; margin-bottom: 16px;">
-                        <span>Overall Jam Risk</span>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Risk Level</span>
-                            <span id="overallJamPercent"
-                                style="color: var(--text-primary); font-weight: 700; font-size: 1.25rem;">0%</span>
-                        </div>
-                        <div
-                            style="width: 100%; height: 40px; background: var(--bg-primary); border-radius: 20px; overflow: hidden; position: relative;">
-                            <div id="overallJamBar"
-                                style="height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--error)); width: 0%; transition: width 0.4s ease, box-shadow 0.3s ease; box-shadow: 0 0 0 rgba(255, 107, 53, 0);">
-                            </div>
-                        </div>
-                    </div>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px;">
-                        100% = jam pause about to trigger; 0% = flow is nominal.
-                    </p>
+            <div class="card">
+                <div class="card-header">
+                    <span>Jam Proximity Trends</span>
                 </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                    <div class="card" style="margin-bottom: 0;">
-                        <div class="card-header" style="font-size: 1.2rem; margin-bottom: 16px;">
-                            <span>Hard Jam Proximity</span>
+                <div class="debug-chart-row">
+                    <div class="chart-panel">
+                        <div class="chart-panel-title">Hard Jam Proximity History</div>
+                        <div class="chart-container">
+                            <canvas id="hardJamHistoryChart"></canvas>
                         </div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="color: var(--text-secondary); font-size: 0.9rem;">Current</span>
-                                <span id="hardJamPercent"
-                                    style="color: var(--text-primary); font-weight: 700; font-size: 1.1rem;">0%</span>
-                            </div>
-                            <div
-                                style="width: 100%; height: 32px; background: var(--bg-primary); border-radius: 16px; overflow: hidden; position: relative;">
-                                <div id="hardJamBar"
-                                    style="height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--error)); width: 0%; transition: width 0.5s ease, box-shadow 0.3s ease; box-shadow: 0 0 0 rgba(255, 107, 53, 0);">
-                                </div>
-                            </div>
-                        </div>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px;">
-                            100% = Hard jam threshold reached
-                        </p>
                     </div>
-
-                    <div class="card" style="margin-bottom: 0;">
-                        <div class="card-header" style="font-size: 1.2rem; margin-bottom: 16px;">
-                            <span>Soft Jam Proximity</span>
+                    <div class="chart-panel">
+                        <div class="chart-panel-title">Soft Jam Proximity History</div>
+                        <div class="chart-container">
+                            <canvas id="softJamHistoryChart"></canvas>
                         </div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="color: var(--text-secondary); font-size: 0.9rem;">Current</span>
-                                <span id="softJamPercent"
-                                    style="color: var(--text-primary); font-weight: 700; font-size: 1.1rem;">0%</span>
-                            </div>
-                            <div
-                                style="width: 100%; height: 32px; background: var(--bg-primary); border-radius: 16px; overflow: hidden; position: relative;">
-                                <div id="softJamBar"
-                                    style="height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--error)); width: 0%; transition: width 0.5s ease, box-shadow 0.3s ease; box-shadow: 0 0 0 rgba(255, 107, 53, 0);">
-                                </div>
-                            </div>
-                        </div>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px;">
-                            100% = Soft jam threshold reached
-                        </p>
                     </div>
                 </div>
             </div>
@@ -983,6 +989,63 @@
                 </div>
                 <div class="status-grid" id="debugGrid">
                     <!-- Populated by JavaScript -->
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="font-size: 1.2rem; margin-bottom: 16px;">
+                    <span>Jam Proximity</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div class="card" style="margin-bottom: 0;">
+                        <div class="card-header" style="font-size: 1.1rem; margin-bottom: 12px;">
+                            <span>Hard Jam</span>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--text-secondary); font-size: 0.9rem;">Current</span>
+                                <span id="hardJamPercent"
+                                    style="color: var(--text-primary); font-weight: 700; font-size: 1.1rem;">0%</span>
+                            </div>
+                            <div class="jam-bar-track">
+                                <div id="hardJamBar"
+                                    style="height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--error)); width: 0%; transition: width 0.5s ease, box-shadow 0.3s ease; box-shadow: 0 0 0 rgba(255, 107, 53, 0);">
+                                </div>
+                                <div id="hardJamPeakMark" class="jam-peak-mark"></div>
+                            </div>
+                            <div class="jam-peak-info">
+                                <span>Peak</span>
+                                <span id="hardJamPeakLabel">0%</span>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px;">
+                            100% = Hard jam threshold reached
+                        </p>
+                    </div>
+                    <div class="card" style="margin-bottom: 0;">
+                        <div class="card-header" style="font-size: 1.1rem; margin-bottom: 12px;">
+                            <span>Soft Jam</span>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--text-secondary); font-size: 0.9rem;">Current</span>
+                                <span id="softJamPercent"
+                                    style="color: var(--text-primary); font-weight: 700; font-size: 1.1rem;">0%</span>
+                            </div>
+                            <div class="jam-bar-track">
+                                <div id="softJamBar"
+                                    style="height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--error)); width: 0%; transition: width 0.5s ease, box-shadow 0.3s ease; box-shadow: 0 0 0 rgba(255, 107, 53, 0);">
+                                </div>
+                                <div id="softJamPeakMark" class="jam-peak-mark"></div>
+                            </div>
+                            <div class="jam-peak-info">
+                                <span>Peak</span>
+                                <span id="softJamPeakLabel">0%</span>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 12px;">
+                            100% = Soft jam threshold reached
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1103,7 +1166,20 @@
             expected: [],
             actual: []
         };
+        const JAM_HISTORY_LIMIT = 60;
+        let jamHistoryData = {
+            labels: [],
+            hard: [],
+            soft: [],
+            hardPeakLine: [],
+            softPeakLine: []
+        };
+        let hardJamHistoryChart = null;
+        let softJamHistoryChart = null;
         let latestStatusSnapshot = null;
+        let hardJamPeak = 0;
+        let softJamPeak = 0;
+        let wasPrinting = false;
         let currentStatusHelpKey = 'default';
         const STATUS_MIN_POLL_MS = 250;
         const STATUS_IDLE_STATES = new Set([0, 8, 9]);
@@ -1182,6 +1258,7 @@
 
             if (pageName === 'status') {
                 initChart();
+                initJamCharts();
             } else if (pageName === 'settings') {
                 loadSettings();
             } else if (pageName === 'logs') {
@@ -1246,6 +1323,166 @@
             });
         }
 
+        function buildJamChart(ctx, label, dataArray, color, fillColor, peakArray) {
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: jamHistoryData.labels,
+                    datasets: [
+                        {
+                            label,
+                            data: dataArray,
+                            borderColor: color,
+                            backgroundColor: fillColor,
+                            borderWidth: 2,
+                            tension: 0.35,
+                            pointRadius: 0,
+                            fill: 'start'
+                        },
+                        {
+                            label: `${label} Peak`,
+                            data: peakArray,
+                            borderColor: '#ffffff',
+                            borderWidth: 1,
+                            borderDash: [6, 4],
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: {
+                            ticks: { color: '#9aa0a6' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            ticks: { color: '#9aa0a6' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: context => {
+                                    const value =
+                                        typeof context.parsed?.y === 'number'
+                                            ? context.parsed.y
+                                            : context.parsed || 0;
+                                    return `${value.toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function initJamCharts() {
+            const hardCtx = document.getElementById('hardJamHistoryChart');
+            const softCtx = document.getElementById('softJamHistoryChart');
+            if (!hardCtx || !softCtx) return;
+
+            if (hardJamHistoryChart) {
+                hardJamHistoryChart.destroy();
+            }
+            if (softJamHistoryChart) {
+                softJamHistoryChart.destroy();
+            }
+
+            hardJamHistoryChart = buildJamChart(
+                hardCtx,
+                'Hard Jam %',
+                jamHistoryData.hard,
+                '#ff6b35',
+                'rgba(255, 107, 53, 0.25)',
+                jamHistoryData.hardPeakLine
+            );
+            softJamHistoryChart = buildJamChart(
+                softCtx,
+                'Soft Jam %',
+                jamHistoryData.soft,
+                '#f7931e',
+                'rgba(247, 147, 30, 0.25)',
+                jamHistoryData.softPeakLine
+            );
+        }
+
+        function updateJamHistoryCharts() {
+            if (hardJamHistoryChart) {
+                hardJamHistoryChart.data.labels = jamHistoryData.labels;
+                hardJamHistoryChart.data.datasets[0].data = jamHistoryData.hard;
+                hardJamHistoryChart.data.datasets[1].data = jamHistoryData.hardPeakLine;
+                hardJamHistoryChart.update('none');
+            }
+            if (softJamHistoryChart) {
+                softJamHistoryChart.data.labels = jamHistoryData.labels;
+                softJamHistoryChart.data.datasets[0].data = jamHistoryData.soft;
+                softJamHistoryChart.data.datasets[1].data = jamHistoryData.softPeakLine;
+                softJamHistoryChart.update('none');
+            }
+        }
+
+        function recordJamHistory(hardPercent, softPercent) {
+            const timestamp = new Date().toLocaleTimeString();
+            const hardValue = Math.max(0, Math.min(100, Number(hardPercent) || 0));
+            const softValue = Math.max(0, Math.min(100, Number(softPercent) || 0));
+
+            jamHistoryData.labels.push(timestamp);
+            jamHistoryData.hard.push(hardValue);
+            jamHistoryData.soft.push(softValue);
+            jamHistoryData.hardPeakLine.push(hardJamPeak);
+            jamHistoryData.softPeakLine.push(softJamPeak);
+
+            if (jamHistoryData.labels.length > JAM_HISTORY_LIMIT) {
+                jamHistoryData.labels.shift();
+                jamHistoryData.hard.shift();
+                jamHistoryData.soft.shift();
+                jamHistoryData.hardPeakLine.shift();
+                jamHistoryData.softPeakLine.shift();
+            }
+
+            updateJamHistoryCharts();
+        }
+
+        function updatePeakDisplays() {
+            const hardPeakLabel = document.getElementById('hardJamPeakLabel');
+            const softPeakLabel = document.getElementById('softJamPeakLabel');
+            const hardPeakMark = document.getElementById('hardJamPeakMark');
+            const softPeakMark = document.getElementById('softJamPeakMark');
+            const clamp = value => Math.max(0, Math.min(100, value));
+            if (hardPeakLabel) {
+                hardPeakLabel.textContent = `${Math.round(clamp(hardJamPeak))}%`;
+            }
+            if (softPeakLabel) {
+                softPeakLabel.textContent = `${Math.round(clamp(softJamPeak))}%`;
+            }
+            if (hardPeakMark) {
+                hardPeakMark.style.left = `${clamp(hardJamPeak)}%`;
+            }
+            if (softPeakMark) {
+                softPeakMark.style.left = `${clamp(softJamPeak)}%`;
+            }
+        }
+
+        function resetJamHistory() {
+            hardJamPeak = 0;
+            softJamPeak = 0;
+            jamHistoryData.labels.length = 0;
+            jamHistoryData.hard.length = 0;
+            jamHistoryData.soft.length = 0;
+            jamHistoryData.hardPeakLine.length = 0;
+            jamHistoryData.softPeakLine.length = 0;
+            updateJamHistoryCharts();
+            updatePeakDisplays();
+        }
+
         // Update chart
         function updateChart(expected, actual) {
             const nowLabel = new Date().toLocaleTimeString();
@@ -1308,39 +1545,10 @@
                 }
             }
 
-            updateOverallJamMeter(hardJamPercent, softJamPercent, passRatio, ratioThreshold);
-        }
-
-        function calculateRatioRisk(passRatio, ratioThreshold) {
-            const safeRatio = typeof passRatio === 'number' ? passRatio : 1;
-            const safeThreshold = (typeof ratioThreshold === 'number' && ratioThreshold > 0) ? ratioThreshold : 0.25;
-            const normalizedGap = safeThreshold - safeRatio;
-            if (normalizedGap <= 0) {
-                return 0;
-            }
-            return Math.min(100, (normalizedGap / safeThreshold) * 100);
-        }
-
-        function updateOverallJamMeter(hardJamPercent, softJamPercent, passRatio, ratioThreshold) {
-            const safeHard = Number.isFinite(hardJamPercent) ? hardJamPercent : 0;
-            const safeSoft = Number.isFinite(softJamPercent) ? softJamPercent : 0;
-            const ratioRisk = calculateRatioRisk(passRatio, ratioThreshold);
-            const overallPercent = Math.min(100, Math.max(safeHard, safeSoft, ratioRisk));
-
-            const overallBar = document.getElementById('overallJamBar');
-            const overallText = document.getElementById('overallJamPercent');
-            if (overallBar && overallText) {
-                overallBar.style.width = overallPercent + '%';
-                overallText.textContent = Math.round(overallPercent) + '%';
-
-                if (overallPercent > 80) {
-                    overallBar.style.boxShadow = '0 0 25px rgba(234, 67, 53, 0.8)';
-                } else if (overallPercent > 55) {
-                    overallBar.style.boxShadow = '0 0 18px rgba(251, 188, 4, 0.6)';
-                } else {
-                    overallBar.style.boxShadow = '0 0 0 rgba(255, 107, 53, 0)';
-                }
-            }
+            hardJamPeak = Math.max(hardJamPeak, hardJamPercent);
+            softJamPeak = Math.max(softJamPeak, softJamPercent);
+            updatePeakDisplays();
+            recordJamHistory(hardJamPercent, softJamPercent);
         }
 
         async function fetchStatusSnapshot(options = {}) {
@@ -1426,6 +1634,9 @@
             }
 
             const isPrinting = printStatus !== 0 && printStatus !== 9;
+            if (isPrinting && !wasPrinting) {
+                resetJamHistory();
+            }
             if (statusActive && isPrinting) {
                 maybeUpdateChart(
                     data.elegoo?.expectedFilament || 0,
@@ -1496,6 +1707,7 @@
             if (isDebugPageActive()) {
                 renderDebugData(data);
             }
+            wasPrinting = isPrinting;
         }
 
         const DEBUG_FIELDS = [
@@ -1512,13 +1724,18 @@
             { label: 'Soft Jam %', key: 'softJamPercent', source: 'elegoo' },
             { label: 'Expected Rate (mm/s)', key: 'expectedRateMmPerSec', source: 'elegoo' },
             { label: 'Actual Rate (mm/s)', key: 'actualRateMmPerSec', source: 'elegoo' },
-            { label: 'Grace Active', key: 'graceActive', source: 'elegoo' }
+            { label: 'Grace Active', key: 'graceActive', source: 'elegoo' },
+            { label: 'Printer Status Code', key: 'printStatus', source: 'elegoo' }
         ];
 
-        function formatDebugValue(value) {
+        function formatDebugValue(value, key) {
             if (value === null || value === undefined) return '—';
             if (typeof value === 'boolean') return value ? 'Yes' : 'No';
             if (typeof value === 'number') {
+                if (key === 'printStatus') {
+                    const statusText = getPrintStatus(value);
+                    return `${value} - ${statusText}`;
+                }
                 return Number.isInteger(value) ? value.toString() : value.toFixed(2);
             }
             return value.toString();
@@ -1551,7 +1768,7 @@
                 rows.push(`
                     <div class="status-item debug-field">
                         <div class="status-label">${field.label}</div>
-                        <div class="status-value">${formatDebugValue(value)}</div>
+                        <div class="status-value">${formatDebugValue(value, field.key)}</div>
                     </div>
                 `);
             });

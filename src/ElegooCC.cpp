@@ -79,8 +79,8 @@ bool isRestPrintStatus(sdcp_print_status_t status)
 
 ElegooCC::ElegooCC()
 {
-    lastMovementValue = -1;
     lastChangeTime    = 0;
+    startedAt = 0;  // Initialize to prevent invalid grace periods    lastChangeTime    = 0;
 
     mainboardID       = "";
     printStatus       = SDCP_PRINT_STATUS_IDLE;
@@ -490,7 +490,7 @@ void ElegooCC::handleStatus(JsonDocument &doc)
     }
 }
 
-void ElegooCC::resetFilamentTracking()
+void ElegooCC::resetFilamentTracking(bool resetGrace)
 {
     unsigned long currentTime = millis();
 
@@ -894,6 +894,7 @@ void ElegooCC::loop()
     unsigned long currentTime = millis();
 
     updateTransport(currentTime);
+    currentTime = millis();
     updatePrintStartCandidateTimeout(currentTime);
 
     // Check filament sensors before determining if we should pause

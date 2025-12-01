@@ -210,7 +210,7 @@ class ElegooCC
     void pausePrint();
     void continuePrint();
 
-    void resetFilamentTracking();
+    void resetFilamentTracking(bool resetGrace = true);
     bool processFilamentTelemetry(JsonObject& printInfo, unsigned long currentTime);
     bool tryReadExtrusionValue(JsonObject& printInfo, const char* key, const char* hexKey,
                                float& output);
