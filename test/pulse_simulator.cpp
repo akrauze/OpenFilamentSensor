@@ -21,6 +21,7 @@
 #include <limits>
 #include <cstring>
 #include <cctype>
+#include <sstream>
 
 #include "generated_test_settings.h"
 
@@ -60,6 +61,10 @@ struct TestResult {
     std::string details;
 };
 std::vector<TestResult> testResults;
+
+// Forward declarations for test helpers used before their definitions
+void printTestHeader(const std::string& testName);
+void recordTest(const std::string& name, bool passed, const std::string& details = "");
 
 // Simulation parameters
 // Constants with defaults. Generated header can override them via macros.
@@ -221,6 +226,37 @@ bool parseUnsignedLongAfterKey(const std::string& line, const char* key, unsigne
     }
 }
 
+unsigned long parseTimestampToken(const std::string& token, unsigned long fallbackTimestamp) {
+    try {
+        return static_cast<unsigned long>(std::stoul(token));
+    } catch (...) {
+        size_t dash = token.rfind('-');
+        std::string timePart = (dash != std::string::npos) ? token.substr(dash + 1) : token;
+        unsigned int hh = 0, mm = 0, ss = 0;
+        char c1 = 0, c2 = 0;
+        std::istringstream iss(timePart);
+        if ((iss >> hh >> c1 >> mm >> c2 >> ss) && c1 == ':' && c2 == ':') {
+            return fallbackTimestamp;
+        }
+    }
+    return fallbackTimestamp;
+}
+
+int countOccurrences(const std::string& path, const std::string& needle) {
+    std::ifstream in(path);
+    if (!in) {
+        return 0;
+    }
+    std::string line;
+    int count = 0;
+    while (std::getline(in, line)) {
+        if (line.find(needle) != std::string::npos) {
+            count++;
+        }
+    }
+    return count;
+}
+
 struct FlowSample {
     unsigned long timestamp = 0;
     float winExp = 0.0f;
@@ -240,6 +276,7 @@ std::vector<FlowSample> loadFlowSamples(const std::string& path) {
 
     std::string line;
     bool pendingReset = true;  // treat start as reset
+    unsigned long fallbackTimestamp = 0;
     while (std::getline(in, line)) {
         if (line.find("Filament tracking reset") != std::string::npos ||
             line.find("Motion sensor reset") != std::string::npos) {
@@ -247,7 +284,10 @@ std::vector<FlowSample> loadFlowSamples(const std::string& path) {
             continue;
         }
 
-        if (line.find("Flow:") == std::string::npos) {
+        bool isFlowLine = (line.find("Flow debug:") != std::string::npos) ||
+                          (line.find("Debug:") != std::string::npos) ||
+                          (line.find("Flow:") != std::string::npos);
+        if (!isFlowLine) {
             continue;
         }
 
@@ -257,7 +297,8 @@ std::vector<FlowSample> loadFlowSamples(const std::string& path) {
             continue;
         }
         try {
-            sample.timestamp = static_cast<unsigned long>(std::stoul(line.substr(0, spacePos)));
+            std::string tsToken = line.substr(0, spacePos);
+            sample.timestamp = parseTimestampToken(tsToken, fallbackTimestamp);
         } catch (...) {
             continue;
         }
@@ -266,12 +307,16 @@ std::vector<FlowSample> loadFlowSamples(const std::string& path) {
             !parseFloatAfterKey(line, "win_sns=", sample.winSns)) {
             continue;
         }
-        parseFloatAfterKey(line, "cumul=", sample.cumulativeSensor);
+        bool haveCumul = parseFloatAfterKey(line, "cumul=", sample.cumulativeSensor);
+        if (!haveCumul) {
+            parseFloatAfterKey(line, "cumul_sns=", sample.cumulativeSensor);
+        }
         parseUnsignedLongAfterKey(line, "pulses=", sample.pulses);
 
         sample.resetFlag = pendingReset;
         pendingReset = false;
         samples.push_back(sample);
+        fallbackTimestamp = sample.timestamp + 1;
     }
     return samples;
 }
@@ -285,16 +330,22 @@ std::vector<std::string> parseJamEventsFromLog(const std::string& path) {
 
     std::string line;
     while (std::getline(in, line)) {
-        if (line.find("Filament jam detected!") == std::string::npos) {
+        if (line.find("Filament jam detected") == std::string::npos) {
             continue;
         }
 
-        float sensorValue = 0.0f;
-        float ratioValue = 0.0f;
-        parseFloatAfterKey(line, "sensor ", sensorValue);
-        parseFloatAfterKey(line, "ratio=", ratioValue);
-
-        std::string jamType = (sensorValue < 0.5f || ratioValue >= 0.90f) ? "hard" : "soft";
+        std::string jamType = "soft";
+        if (line.find("(hard") != std::string::npos) {
+            jamType = "hard";
+        } else if (line.find("(soft") != std::string::npos) {
+            jamType = "soft";
+        } else {
+            float sensorValue = 0.0f;
+            float ratioValue = 0.0f;
+            parseFloatAfterKey(line, "sensor ", sensorValue);
+            parseFloatAfterKey(line, "ratio=", ratioValue);
+            jamType = (sensorValue < 0.5f || ratioValue >= 0.90f) ? "hard" : "soft";
+        }
         jams.push_back(jamType);
     }
     return jams;
@@ -451,6 +502,39 @@ std::vector<std::string> replayFlowSamples(const std::vector<FlowSample>& sample
     return jamTypes;
 }
 
+struct ReplayCase {
+    std::string name;
+    std::string path;
+    std::vector<std::string> expectedJams;
+    int expectedPauses;
+};
+
+void runReplayCase(const ReplayCase& c) {
+    printTestHeader(c.name);
+
+    auto samples = loadFlowSamples(c.path);
+    recordTest("Flow samples parsed", !samples.empty(),
+               samples.empty() ? std::string("Failed to parse ") + c.path : "");
+    if (samples.empty()) {
+        return;
+    }
+
+    auto logJams = parseJamEventsFromLog(c.path);
+    std::string jamDetail;
+    if (!logJams.empty()) {
+        jamDetail = logJams[0];
+        for (size_t i = 1; i < logJams.size(); ++i) {
+            jamDetail += "," + logJams[i];
+        }
+    }
+    recordTest("Log jam order", logJams == c.expectedJams,
+               jamDetail.empty() ? "none" : jamDetail);
+
+    int pauses = countOccurrences(c.path, "Pause command sent to printer");
+    recordTest("Pause commands issued", pauses == c.expectedPauses,
+               "got " + std::to_string(pauses));
+}
+
 // Helper: Advance time
 void advanceTime(int ms) {
     _mockMillis += ms;
@@ -540,7 +624,7 @@ void printTestHeader(const std::string& testName) {
 }
 
 // Helper: Record test result
-void recordTest(const std::string& name, bool passed, const std::string& details = "") {
+void recordTest(const std::string& name, bool passed, const std::string& details) {
     testResults.push_back({name, passed, details});
     if (passed) {
         std::cout << COLOR_GREEN << "✓ PASS" << COLOR_RESET << ": " << name << "\n";
@@ -1256,6 +1340,20 @@ void testRealLogReplay() {
 }
 
 //=============================================================================
+// TEST 13 & 14: Replay logs from fixtures/logs_to_replay
+//=============================================================================
+void testReplayLogFixtures() {
+    const ReplayCase cases[] = {
+        {"Test 13: Log Replay (soft_detected)", "../test/fixtures/logs_to_replay/soft_detected.txt", {"soft"}, 1},
+        {"Test 14: Log Replay (soft_detected_but_no_rearm)", "../test/fixtures/logs_to_replay/soft_detected_but_no_rearm.txt", {"soft", "soft"}, 2},
+    };
+
+    for (const auto& c : cases) {
+        runReplayCase(c);
+    }
+}
+
+//=============================================================================
 // Main test runner
 //=============================================================================
 int main(int argc, char** argv) {
@@ -1305,6 +1403,7 @@ int main(int argc, char** argv) {
     testHardSnagMidPrint();
     testComplexFlowSequence();
     testRealLogReplay();
+    testReplayLogFixtures();
 
     // Summary
     int passed = 0;

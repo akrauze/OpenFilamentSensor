@@ -10,8 +10,15 @@ fi
 
 # Compile test suite (include test dir first for Arduino.h mock)
 echo "Generating test settings from data/user_settings.json..."
+PYTHON_BIN=""
 if command -v python &> /dev/null; then
-    python generate_test_settings.py
+    PYTHON_BIN="python"
+elif command -v python3 &> /dev/null; then
+    PYTHON_BIN="python3"
+fi
+
+if [ -n "$PYTHON_BIN" ]; then
+    $PYTHON_BIN generate_test_settings.py
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to generate test settings header"
         exit 1
