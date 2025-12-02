@@ -29,10 +29,61 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Iterator, List, Optional
 
 # Import shared functions from build_and_flash.py
 SECRET_FILENAME = "secrets.json"
+
+# Add tools directory to path to import from build_and_flash
+tools_dir = str(Path(__file__).parent)
+sys.path.append(tools_dir)
+
+# Import the timestamp and version creation functions from build_and_flash.py
+try:
+    from build_and_flash import create_build_version, create_build_timestamp, read_version_file
+    print("Successfully imported build utility functions from build_and_flash.py")
+except ImportError as e:
+    print(f"WARNING: Could not import from build_and_flash.py: {e}")
+    print("Falling back to local implementations")
+
+    # Fallback implementations
+    def read_version_file(repo_root: str) -> tuple[int, int, int]:
+        """Read version from .version file. Returns (major, minor, build)."""
+        version_path = os.path.join(repo_root, "data/.version")
+        if not os.path.exists(version_path):
+            return (0, 0, 0)
+
+        try:
+            with open(version_path, "r", encoding="utf-8") as f:
+                version_str = f.read().strip()
+                parts = version_str.split(".")
+                if len(parts) == 3:
+                    return (int(parts[0]), int(parts[1]), int(parts[2]))
+        except (ValueError, IOError):
+            pass
+
+        return (0, 0, 0)
+
+    def create_build_version(data_dir: str, repo_root: str) -> str:
+        """Create build_version.txt with current version from .version file."""
+        major, minor, build = read_version_file(repo_root)
+        version_str = f"{major}.{minor}.{build}"
+        version_path = os.path.join(data_dir, "build_version.txt")
+        with open(version_path, "w", encoding="utf-8") as f:
+            f.write(version_str)
+        print(f"Created build version file: v{version_str}")
+        return version_path
+
+    def create_build_timestamp(data_dir: str) -> str:
+        """Create build_timestamp.txt with format MMDDYYHHMMSS for filesystem identification."""
+        now = datetime.now()
+        thumbprint = now.strftime("%m%d%y%H%M%S")
+        timestamp_path = os.path.join(data_dir, "build_timestamp.txt")
+        with open(timestamp_path, "w", encoding="utf-8") as f:
+            f.write(thumbprint)
+        print(f"Created filesystem build thumbprint: {thumbprint}")
+        return timestamp_path
 
 # Board to chip family mapping for CHIP_FAMILY environment variable
 BOARD_TO_CHIP_FAMILY = {
@@ -177,6 +228,7 @@ def copy_to_distributor(repo_root: str, board_env: str, ignore_secrets: bool) ->
     """
     Copy firmware_merged.bin to distributor directory if secrets were ignored.
     Only copies when ignore_secrets is True to ensure clean firmware.
+    Also creates OTA directory with individual files for download.
     """
     if not ignore_secrets:
         print("\n=== Skipping Distributor Copy ===")
@@ -186,10 +238,12 @@ def copy_to_distributor(repo_root: str, board_env: str, ignore_secrets: bool) ->
 
     # Get paths
     build_dir = os.path.join(repo_root, ".pio", "build", board_env)
-    firmware_src = os.path.join(build_dir, "firmware_merged.bin")
+    firmware_merged_src = os.path.join(build_dir, "firmware_merged.bin")
+    firmware_src = os.path.join(build_dir, "firmware.bin")
+    littlefs_src = os.path.join(build_dir, "littlefs.bin")
 
-    if not os.path.exists(firmware_src):
-        print(f"\nWARNING: firmware_merged.bin not found at {firmware_src}")
+    if not os.path.exists(firmware_merged_src):
+        print(f"\nWARNING: firmware_merged.bin not found at {firmware_merged_src}")
         print("Skipping distributor copy.")
         return
 
@@ -206,9 +260,9 @@ def copy_to_distributor(repo_root: str, board_env: str, ignore_secrets: bool) ->
     # Create directory if it doesn't exist
     os.makedirs(distributor_dir, exist_ok=True)
 
-    # Copy firmware
+    # Copy merged firmware
     try:
-        shutil.copy2(firmware_src, firmware_dst)
+        shutil.copy2(firmware_merged_src, firmware_dst)
         file_size = os.path.getsize(firmware_dst)
         print(f"\n=== Distributor Copy ===")
         print(f"Copied firmware to: {firmware_dst}")
@@ -216,6 +270,86 @@ def copy_to_distributor(repo_root: str, board_env: str, ignore_secrets: bool) ->
         print("Clean firmware ready for distribution.")
     except Exception as e:
         print(f"\nERROR: Failed to copy firmware to distributor: {e}")
+
+    # Create OTA directory and copy individual files
+    ota_dir = os.path.join(distributor_dir, "OTA")
+    os.makedirs(ota_dir, exist_ok=True)
+
+    # Copy firmware.bin (for OTA)
+    firmware_ota_dst = os.path.join(ota_dir, "firmware.bin")
+    try:
+        shutil.copy2(firmware_src, firmware_ota_dst)
+        print(f"Created OTA firmware: {firmware_ota_dst}")
+    except Exception as e:
+        print(f"\nERROR: Failed to copy OTA firmware: {e}")
+
+    # Copy littlefs.bin (for OTA)
+    if os.path.exists(littlefs_src):
+        littlefs_ota_dst = os.path.join(ota_dir, "littlefs.bin")
+        try:
+            shutil.copy2(littlefs_src, littlefs_ota_dst)
+            print(f"Created OTA filesystem: {littlefs_ota_dst}")
+        except Exception as e:
+            print(f"\nERROR: Failed to copy OTA filesystem: {e}")
+    else:
+        print(f"\nWARNING: littlefs.bin not found at {littlefs_src}")
+        print("OTA filesystem will not be available.")
+
+    # Generate OTA_readme.md
+    ota_readme_dst = os.path.join(ota_dir, "OTA_readme.md")
+    try:
+        chip_family = get_chip_family_for_board(board_env)
+        version = "1.3.0"  # TODO: Extract from build or git
+        release_date = datetime.now().strftime("%Y-%m-%d")
+
+        ota_readme_content = f"""# Centauri Carbon Motion Detector - OTA Update
+
+## Version: {version}
+## Board: {chip_dir} ({chip_family})
+## Released: {release_date}
+
+### Installation Instructions
+
+#### New Installation:
+1. Use firmware.bin with your preferred flashing tool (PlatformIO, esptool.py)
+2. Ensure proper partition scheme for your board
+3. First boot will automatically set up the web UI
+
+#### OTA Update:
+1. Access device web UI
+2. Navigate to Update tab
+3. Upload firmware.bin for application update, wait 10 seconds for reboot to complete
+4. Upload littlefs.bin for filesystem update (if available)
+
+### File Details
+- **firmware.bin**: Main application binary
+- **littlefs.bin**: Filesystem image with web UI and settings (including Wifi)
+
+### Supported Hardware
+- {chip_family}
+- Board configuration: {chip_dir}
+
+### Changes in This Version
+- Filament motion detection improvements
+- Enhanced web interface
+- Bug fixes and optimizations
+
+### Known Issues
+- None reported
+
+### Support
+- GitHub https://github.com/harpua555/centauri-carbon-motion-detector/issues
+
+---
+Generated by build_and_release.py on {release_date}
+"""
+
+        with open(ota_readme_dst, 'w', encoding='utf-8') as f:
+            f.write(ota_readme_content)
+        print(f"Created OTA readme: {ota_readme_dst}")
+        print(f"OTA directory ready: {ota_dir}")
+    except Exception as e:
+        print(f"\nERROR: Failed to create OTA readme: {e}")
 
 
 def build_firmware(repo_root: str, board_env: str, ignore_secrets: bool, version_action: Optional[str], version_type: str) -> None:
@@ -282,10 +416,22 @@ def build_firmware(repo_root: str, board_env: str, ignore_secrets: bool, version
     build_cmd = [pio_cmd, "run", "-e", board_env]
     run_with_chip_family(build_cmd, board_env, cwd=repo_root)
 
-    # Build filesystem
+    # Build filesystem with timestamp and version info
     print(f"\n=== Building Filesystem ===")
-    fs_cmd = [pio_cmd, "run", "-e", board_env, "-t", "buildfs"]
-    run_with_chip_family(fs_cmd, board_env, cwd=repo_root)
+
+    # Create build info files before filesystem build
+    timestamp_path = create_build_timestamp(data_dir)
+    version_path = create_build_version(data_dir, repo_root)
+
+    try:
+        fs_cmd = [pio_cmd, "run", "-e", board_env, "-t", "buildfs"]
+        run_with_chip_family(fs_cmd, board_env, cwd=repo_root)
+    finally:
+        # Clean up temporary files
+        if timestamp_path and os.path.exists(timestamp_path):
+            os.remove(timestamp_path)
+        if version_path and os.path.exists(version_path):
+            os.remove(version_path)
 
     print(f"\n=== Build Complete ===")
     print(f"Firmware and filesystem built successfully for {board_env}")
