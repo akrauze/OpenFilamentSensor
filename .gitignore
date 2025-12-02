@@ -27,3 +27,5 @@ docs/old
 doc/new
 .antigravity
 TODO.md
+data/build_timestamp.txt
+data/build_version.txt
