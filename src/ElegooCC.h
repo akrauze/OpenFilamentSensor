@@ -179,14 +179,19 @@ class ElegooCC
     // Tracking state (for UI freeze on pause)
     bool          trackingFrozen;
     bool          hasBeenPaused;
+    
+    // Jam detector state caching (for throttled updates)
+    JamState      cachedJamState;
+    unsigned long lastJamDetectorUpdateMs;
 
     // Command tracking
     unsigned long lastPauseRequestMs;
     unsigned long lastPrintEndMs;
-    static constexpr unsigned long STATUS_IDLE_INTERVAL_MS       = 10000;
-    static constexpr unsigned long STATUS_ACTIVE_INTERVAL_MS     = 250;
-    static constexpr unsigned long STATUS_POST_PRINT_COOLDOWN_MS = 20000;
-    static constexpr unsigned long JAM_DEBUG_INTERVAL_MS         = 1000;
+    static constexpr unsigned long STATUS_IDLE_INTERVAL_MS          = 10000;
+    static constexpr unsigned long STATUS_ACTIVE_INTERVAL_MS        = 250;
+    static constexpr unsigned long STATUS_POST_PRINT_COOLDOWN_MS    = 20000;
+    static constexpr unsigned long JAM_DEBUG_INTERVAL_MS            = 1000;
+    static constexpr unsigned long JAM_DETECTOR_UPDATE_INTERVAL_MS  = 250;  // 4Hz
 
     ElegooCC();
 

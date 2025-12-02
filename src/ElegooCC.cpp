@@ -129,6 +129,7 @@ ElegooCC::ElegooCC()
 
     lastPauseRequestMs = 0;
     lastPrintEndMs     = 0;
+    lastJamDetectorUpdateMs = 0;
 
     // TODO: send a UDP broadcast, M99999 on Port 30000, maybe using AsyncUDP.h and listen for the
     // result. this will give us the printer IP address.
@@ -1085,12 +1086,28 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     motionSensor.getWindowedRates(windowedExpectedRate, windowedActualRate);
 
     // Update jam detector and get current state
-    JamState jamState = jamDetector.update(
-        expectedDistance, actualDistance, movementPulseCount,
-        currentlyPrinting, expectedTelemetryAvailable,
-        currentTime, startedAt, jamConfig,
-        windowedExpectedRate, windowedActualRate
-    );
+    // Throttle jamDetector.update() to 4Hz (250ms) to ensure accurate timing
+    if ((currentTime - lastJamDetectorUpdateMs) >= JAM_DETECTOR_UPDATE_INTERVAL_MS)
+    {
+        lastJamDetectorUpdateMs = currentTime;
+        
+        // Update jam detector and get current state
+        cachedJamState = jamDetector.update(
+            expectedDistance, actualDistance, movementPulseCount,
+            currentlyPrinting, expectedTelemetryAvailable,
+            currentTime, startedAt, jamConfig,
+            windowedExpectedRate, windowedActualRate
+        );
+        
+        // Update filament stopped state (unless latched by pause/tracking freeze)
+        if (!jamDetector.isPauseRequested() && !trackingFrozen)
+        {
+            filamentStopped = cachedJamState.jammed;
+        }
+    }
+    
+    // Use cached state for logging
+    JamState jamState = cachedJamState;
 
     // Periodic consolidated logging with all telemetry data + memory monitoring
     if (debugFlow && currentlyPrinting && (currentTime - lastFlowLogMs) >= EXPECTED_FILAMENT_SAMPLE_MS)
@@ -1116,12 +1133,6 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
                     jamState.deficit / (expectedDistance > 0.1f ? expectedDistance : 1.0f),
                     jamState.hardJamPercent, jamState.softJamPercent, jamState.passRatio,
                     movementPulseCount);
-    }
-
-    // Update jam state (unless latched by pause/tracking freeze)
-    if (!jamDetector.isPauseRequested() && !trackingFrozen)
-    {
-        filamentStopped = jamState.jammed;
     }
 }
 
