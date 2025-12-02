@@ -928,6 +928,35 @@ void ElegooCC::loop()
     maybeRequestStatus(currentTime);
 }
 
+bool ElegooCC::shouldApplyPulseReduction(float reductionPercent)
+{
+    static int pulseSkipCounter = 0;
+
+    // 100% or higher: count all pulses (normal operation)
+    if (reductionPercent >= 100.0f) {
+        pulseSkipCounter = 0;  // Reset counter for next time
+        return true;
+    }
+
+    // 0% or lower: count no pulses (simulate complete blockage)
+    if (reductionPercent <= 0.0f) {
+        pulseSkipCounter = 0;  // Reset counter for next time
+        return false;
+    }
+
+    // Calculate skip ratio: how many pulses to skip between counts
+    // For example: 50% -> skipRatio = 1 (skip 1, count 1), 20% -> skipRatio = 4 (skip 4, count 1)
+    int skipRatio = (int)((100.0f / reductionPercent) - 0.5f); // Round to nearest
+
+    if (pulseSkipCounter >= skipRatio) {
+        pulseSkipCounter = 0;
+        return true;  // Count this pulse
+    } else {
+        pulseSkipCounter++;
+        return false; // Skip this pulse
+    }
+}
+
 void ElegooCC::checkFilamentRunout(unsigned long currentTime)
 {
     // The signal output of the switch sensor is at low level when no filament is detected
@@ -982,11 +1011,21 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     if (currentMovementValue != lastMovementValue)
     {
         // Only trigger on RISING edge (LOW->HIGH, 0->1)
-        if (currentMovementValue == HIGH && lastMovementValue == LOW && shouldCountPulses)
-        {
-            float movementMm = settingsManager.getMovementMmPerPulse();
-            if (movementMm <= 0.0f)
-            {
+          if (currentMovementValue == HIGH && lastMovementValue == LOW && shouldCountPulses)
+          {
+              // Apply pulse reduction filter for testing
+              float reductionPercent = settingsManager.getPulseReductionPercent();
+              if (!shouldApplyPulseReduction(reductionPercent)) {
+                  // Even when skipping a pulse, update lastMovementValue so we don't repeatedly
+                  // re-evaluate the same HIGH level as a new rising edge in subsequent loop ticks.
+                  lastMovementValue = currentMovementValue;
+                  lastChangeTime    = currentTime;
+                  return; // Skip this pulse due to reduction setting
+              }
+
+              float movementMm = settingsManager.getMovementMmPerPulse();
+              if (movementMm <= 0.0f)
+              {
                 movementMm = 2.88f;  // Default sensor spec
             }
 

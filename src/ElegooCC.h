@@ -223,6 +223,7 @@ class ElegooCC
     bool isPrintJobActive();  // Returns true for any non-idle state (for polling decisions)
     bool shouldPausePrint(unsigned long currentTime);
     void checkFilamentMovement(unsigned long currentTime);
+    bool shouldApplyPulseReduction(float reductionPercent);  // Pulse reduction helper function
     void maybeRequestStatus(unsigned long currentTime);
     void checkFilamentRunout(unsigned long currentTime);
 

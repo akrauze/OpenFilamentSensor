@@ -173,12 +173,21 @@ void WebServer::begin()
                 settingsManager.setAutoCalibrateSensor(
                     jsonObj["auto_calibrate_sensor"].as<bool>());
             }
+            if (jsonObj.containsKey("pulse_reduction_percent"))
+            {
+                settingsManager.setPulseReductionPercent(
+                    jsonObj["pulse_reduction_percent"].as<float>());
+            }
             if (jsonObj.containsKey("test_recording_mode"))
             {
                 settingsManager.setTestRecordingMode(
                     jsonObj["test_recording_mode"].as<bool>());
             }
             bool saved = settingsManager.save();
+            if (saved) {
+                // Reload settings to apply changes immediately
+                settingsManager.load();
+            }
             jsonObj.clear();
             request->send(saved ? 200 : 500, "text/plain", saved ? "ok" : "save failed");
         }));
