@@ -7,7 +7,7 @@ data/secrets.json
 data_lite/
 merge_bin.py
 !tools/merge_bin.py
-tools/pycache
+tools/__pycache__
 test/render/filament_log*
 logs/*
 !logs/README.md
