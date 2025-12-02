@@ -141,7 +141,6 @@ def run(cmd: List[str], cwd: Optional[str] = None, env: Optional[str] = None) ->
     env_dict = os.environ.copy()
     if env:
         env_dict['CHIP_FAMILY'] = env
-        print(f"DEBUG: Setting CHIP_FAMILY={env} for subprocess")
 
     subprocess.run(cmd, cwd=cwd, check=True, env=env_dict)
 

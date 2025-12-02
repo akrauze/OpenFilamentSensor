@@ -14,17 +14,20 @@
 
 // Handle the case where environment variables are empty strings
 #ifndef FIRMWARE_VERSION_RAW
-#define FIRMWARE_VERSION_RAW dev
+#define FIRMWARE_VERSION_RAW alpha
 #endif
+
 #ifndef CHIP_FAMILY_RAW
 #define CHIP_FAMILY_RAW Unknown
 #endif
 
 // Create a macro that checks if the stringified value is empty and uses fallback
-#define GET_VERSION_STRING(x, fallback) (strlen(TOSTRING(x)) == 0 ? fallback : TOSTRING(x))
+// sizeof(TOSTRING(x)) == 1 means the string literal is "" (only the terminating '\0')
+#define GET_VERSION_STRING(x, fallback) (sizeof(TOSTRING(x)) == 1 ? fallback : TOSTRING(x))
 
-const char* firmwareVersion = GET_VERSION_STRING(FIRMWARE_VERSION_RAW, "dev");
-const char* chipFamily      = GET_VERSION_STRING(CHIP_FAMILY_RAW, "Unknown");
+const char* firmwareVersion = GET_VERSION_STRING(FIRMWARE_VERSION_RAW, "alpha");
+const char* chipFamily      = GET_VERSION_STRING(CHIP_FAMILY_RAW, "ESP32 (Unspecified Model)");
+
 
 // Use BUILD_DATE and BUILD_TIME if available (set by build script), otherwise fall back to __DATE__ and __TIME__
 #ifdef BUILD_DATE
