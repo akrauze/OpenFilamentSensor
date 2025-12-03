@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 """
 Shared board configuration module for Centauri Carbon Motion Detector.
 Single source of truth for board-to-chip-family mappings and related functions.
 """
 
 from __future__ import annotations
-
 from typing import Dict
 
 # Board to chip family mapping for CHIP_FAMILY environment variable
@@ -44,7 +44,6 @@ def get_chip_family_for_board(board_env: str) -> str:
                         f"Supported environments: {sorted(BOARD_TO_CHIP_FAMILY.keys())}")
     return chip_family
 
-
 def validate_board_environment(board_env: str) -> bool:
     """
     Validate that board environment is known and has a valid chip family.
@@ -57,7 +56,6 @@ def validate_board_environment(board_env: str) -> bool:
     """
     return board_env in BOARD_TO_CHIP_FAMILY
 
-
 def get_supported_boards() -> list[str]:
     """
     Get list of all supported board environments.
@@ -66,7 +64,6 @@ def get_supported_boards() -> list[str]:
         Sorted list of supported board environment names
     """
     return sorted(BOARD_TO_CHIP_FAMILY.keys())
-
 
 def get_supported_chip_families() -> set[str]:
     """
