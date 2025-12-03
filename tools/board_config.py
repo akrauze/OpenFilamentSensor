@@ -1,0 +1,78 @@
+"""
+Shared board configuration module for Centauri Carbon Motion Detector.
+Single source of truth for board-to-chip-family mappings and related functions.
+"""
+
+from __future__ import annotations
+
+from typing import Dict
+
+# Board to chip family mapping for CHIP_FAMILY environment variable
+# Format: <optionalmanufacturer> <chipbase>-<chiptype>
+# Examples: "ESP32", "ESP32-S3", "seeed ESP32-C3"
+BOARD_TO_CHIP_FAMILY: Dict[str, str] = {
+    "esp32-dev": "ESP32",
+    "esp32-build": "ESP32",
+    "esp32-s3-dev": "ESP32-S3",
+    "esp32-s3-build": "ESP32-S3",
+    "seeed_xiao_esp32s3-dev": "seeed ESP32-S3",
+    "seeed_xiao_esp32s3-build": "seeed ESP32-S3",
+    "seeed_xiao_esp32c3-dev": "seeed ESP32-C3",
+    "seeed_xiao_esp32c3-build": "seeed ESP32-C3",
+    "esp32-c3-supermini-dev": "ESP32-C3",
+    "esp32-c3-supermini-ota": "ESP32-C3",
+    "esp32c3supermini": "ESP32-C3",
+}
+
+def get_chip_family_for_board(board_env: str) -> str:
+    """
+    Get the chip family for a given PlatformIO environment name.
+    Returns the appropriate chip family string or raises ValueError if unknown.
+
+    Args:
+        board_env: PlatformIO environment name (e.g., "esp32-s3-dev")
+
+    Returns:
+        Chip family string (e.g., "ESP32-S3", "seeed ESP32-C3")
+
+    Raises:
+        ValueError: If board_env is not supported
+    """
+    chip_family = BOARD_TO_CHIP_FAMILY.get(board_env)
+    if chip_family is None:
+        raise ValueError(f"Unknown PlatformIO environment '{board_env}'. "
+                        f"Supported environments: {sorted(BOARD_TO_CHIP_FAMILY.keys())}")
+    return chip_family
+
+
+def validate_board_environment(board_env: str) -> bool:
+    """
+    Validate that board environment is known and has a valid chip family.
+
+    Args:
+        board_env: PlatformIO environment name
+
+    Returns:
+        True if board is supported, False otherwise
+    """
+    return board_env in BOARD_TO_CHIP_FAMILY
+
+
+def get_supported_boards() -> list[str]:
+    """
+    Get list of all supported board environments.
+
+    Returns:
+        Sorted list of supported board environment names
+    """
+    return sorted(BOARD_TO_CHIP_FAMILY.keys())
+
+
+def get_supported_chip_families() -> set[str]:
+    """
+    Get set of all unique chip families supported.
+
+    Returns:
+        Set of unique chip family strings
+    """
+    return set(BOARD_TO_CHIP_FAMILY.values())

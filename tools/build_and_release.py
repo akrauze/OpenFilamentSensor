@@ -39,6 +39,9 @@ SECRET_FILENAME = "secrets.json"
 tools_dir = str(Path(__file__).parent)
 sys.path.append(tools_dir)
 
+# Import shared board configuration
+from board_config import get_chip_family_for_board, validate_board_environment, get_supported_boards
+
 # Import the timestamp and version creation functions from build_and_flash.py
 try:
     from build_and_flash import create_build_version, create_build_timestamp, read_version_file
@@ -85,20 +88,7 @@ except ImportError as e:
         print(f"Created filesystem build thumbprint: {thumbprint}")
         return timestamp_path
 
-# Board to chip family mapping for CHIP_FAMILY environment variable
-BOARD_TO_CHIP_FAMILY = {
-    "esp32-dev": "ESP32",
-    "esp32-build": "ESP32",
-    "esp32-s3-dev": "ESP32-S3",
-    "esp32-s3-build": "ESP32-S3",
-    "seeed_xiao_esp32s3-dev": "ESP32-S3",
-    "seeed_xiao_esp32s3-build": "ESP32-S3",
-    "seeed_xiao_esp32c3-dev": "ESP32-C3",
-    "seeed_xiao_esp32c3-build": "ESP32-C3",
-    "esp32-c3-supermini-dev": "ESP32-C3",
-    "esp32-c3-supermini-ota": "ESP32-C3",
-    "esp32c3supermini": "ESP32-C3",
-}
+# Board to chip family mapping is now handled by tools/board_config.py
 
 # Board to distributor directory mapping
 BOARD_TO_DISTRIBUTOR_DIR = {
@@ -116,12 +106,7 @@ BOARD_TO_DISTRIBUTOR_DIR = {
 }
 
 
-def get_chip_family_for_board(board_env: str) -> str:
-    """
-    Get the chip family for a given PlatformIO environment name.
-    Returns the appropriate chip family string or empty string if unknown.
-    """
-    return BOARD_TO_CHIP_FAMILY.get(board_env, "")
+# get_chip_family_for_board function is now imported from tools/board_config.py
 
 
 def get_distributor_dir_for_board(board_env: str) -> str:
@@ -614,13 +599,14 @@ def main() -> None:
     repo_root = os.path.dirname(tools_dir)
 
     # Validate environment
-    chip_family = get_chip_family_for_board(args.env)
-    if not chip_family:
+    if not validate_board_environment(args.env):
         print(f"ERROR: Unknown board environment '{args.env}'")
         print("Supported environments:")
-        for env in sorted(BOARD_TO_CHIP_FAMILY.keys()):
+        for env in get_supported_boards():
             print(f"  {env}")
         sys.exit(1)
+
+    chip_family = get_chip_family_for_board(args.env)
 
     distributor_dir = get_distributor_dir_for_board(args.env)
     if not distributor_dir:

@@ -28,34 +28,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Iterator, List, Optional
 
+# Import shared board configuration
+from board_config import get_chip_family_for_board, validate_board_environment
+
 SECRET_FILENAME = "secrets.json"
-
-# Board to chip family mapping for CHIP_FAMILY environment variable
-BOARD_TO_CHIP_FAMILY = {
-    "esp32-dev": "ESP32",
-    "esp32-build": "ESP32",
-    "esp32-s3-dev": "ESP32-S3",
-    "esp32-s3-build": "ESP32-S3",
-    "seeed_xiao_esp32s3-dev": "ESP32-S3",
-    "seeed_xiao_esp32s3-build": "ESP32-S3",
-    "seeed_xiao_esp32c3-dev": "ESP32-C3",
-    "seeed_xiao_esp32c3-build": "ESP32-C3",
-    "esp32-c3-supermini-dev": "ESP32-C3",
-    "esp32-c3-supermini-ota": "ESP32-C3",
-    "esp32c3supermini": "ESP32-C3",
-}
-
-
-def get_chip_family_for_board(board_env: str) -> str:
-    """
-    Get the chip family for a given PlatformIO environment name.
-    Returns the appropriate chip family string or raises ValueError if unknown.
-    """
-    chip_family = BOARD_TO_CHIP_FAMILY.get(board_env)
-    if chip_family is None:
-        raise ValueError(f"Unknown PlatformIO environment '{board_env}'. "
-                        f"Supported environments: {sorted(BOARD_TO_CHIP_FAMILY.keys())}")
-    return chip_family
 
 
 @contextmanager
@@ -149,8 +125,14 @@ def run_with_chip_family(cmd: List[str], board_env: str, cwd: Optional[str] = No
     """
     Run a command with CHIP_FAMILY environment variable set based on board configuration.
     """
+    # Validate board environment before proceeding
+    if not validate_board_environment(board_env):
+        from board_config import get_supported_boards
+        raise ValueError(f"Unsupported board environment '{board_env}'. "
+                        f"Supported: {get_supported_boards()}")
+
     chip_family = get_chip_family_for_board(board_env)
-    print(f"DEBUG: Environment '{board_env}' -> CHIP_FAMILY='{chip_family}'")
+    print(f"Environment '{board_env}' -> CHIP_FAMILY='{chip_family}'")
     run(cmd, cwd=cwd, env=chip_family)
 
 

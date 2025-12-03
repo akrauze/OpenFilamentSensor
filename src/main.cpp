@@ -17,16 +17,16 @@
 #define FIRMWARE_VERSION_RAW alpha
 #endif
 
+// Build scripts now guarantee that CHIP_FAMILY_RAW is always set with valid values
 #ifndef CHIP_FAMILY_RAW
-#define CHIP_FAMILY_RAW Unknown
+#define CHIP_FAMILY_RAW ESP32
 #endif
 
-// Create a macro that checks if the stringified value is empty and uses fallback
-// sizeof(TOSTRING(x)) == 1 means the string literal is "" (only the terminating '\0')
-#define GET_VERSION_STRING(x, fallback) (sizeof(TOSTRING(x)) == 1 ? fallback : TOSTRING(x))
+const char* firmwareVersion = TOSTRING(FIRMWARE_VERSION_RAW);
 
-const char* firmwareVersion = GET_VERSION_STRING(FIRMWARE_VERSION_RAW, "alpha");
-const char* chipFamily      = GET_VERSION_STRING(CHIP_FAMILY_RAW, "ESP32 (Unspecified Model)");
+// Use the CHIP_FAMILY_RAW if it expands to a non-empty string literal, otherwise fall back to the default.
+static const char* chipFamilyRaw = TOSTRING(CHIP_FAMILY_RAW);
+const char* chipFamily = (chipFamilyRaw[0] != '\0') ? chipFamilyRaw : "ESP32";
 
 
 // Use BUILD_DATE and BUILD_TIME if available (set by build script), otherwise fall back to __DATE__ and __TIME__
