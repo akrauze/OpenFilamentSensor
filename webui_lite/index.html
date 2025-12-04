@@ -2187,6 +2187,28 @@
             return logAccumulator.entries.join('\n');
         }
 
+        /**
+         * Redact sensitive information (SSIDs, IP addresses) from log text
+         * Used only when downloading logs to protect user privacy
+         */
+        function redactSensitiveInfo(text) {
+            let result = text;
+            // Redact WiFi SSIDs
+            result = result.replace(/Connecting to WiFi: .+$/gm, 'Connecting to WiFi: <hidden>');
+            result = result.replace(/Reconnecting to WiFi: .+$/gm, 'Reconnecting to WiFi: <hidden>');
+            result = result.replace(/WiFi: [^\n]+/g, 'WiFi: <hidden>');
+            // Redact IP addresses in common log patterns
+            result = result.replace(/IP Address: [\d.]+/g, 'IP Address: <hidden>');
+            result = result.replace(/AP IP Address: [\d.]+/g, 'AP IP Address: <hidden>');
+            result = result.replace(/Elegoo CC @ [\d.]+/g, 'Elegoo CC @ <hidden>');
+            result = result.replace(/Discovery reply from [\d.]+/g, 'Discovery reply from <hidden>');
+            result = result.replace(/probe to [\d.]+/g, 'probe to <hidden>');
+            // Redact ssid and elegooip in JSON settings snapshots
+            result = result.replace(/"ssid":"[^"]*"/g, '"ssid":"<hidden>"');
+            result = result.replace(/"elegooip":"[^"]*"/g, '"elegooip":"<hidden>"');
+            return result;
+        }
+
         async function loadLogs() {
             try {
                 const response = await fetch('/api/logs_live');
@@ -2237,7 +2259,8 @@
         async function downloadLogs() {
             try {
                 // Export from browser-side accumulator instead of fetching from ESP32
-                const text = getAccumulatedLogsText();
+                // Redact sensitive info (SSIDs, IPs) so users can safely share logs
+                const text = redactSensitiveInfo(getAccumulatedLogsText());
 
                 if (text.length === 0) {
                     showToast('No logs to download', 'warning');
