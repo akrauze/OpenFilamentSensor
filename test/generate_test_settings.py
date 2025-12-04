@@ -24,7 +24,8 @@ def main():
 
     field_specs = [
         ("movement_mm_per_pulse", "TEST_MM_PER_PULSE", 2.88, float),
-        ("detection_ratio_threshold", "TEST_RATIO_THRESHOLD", 0.25, float),
+        # detection_ratio_threshold stored as 0-100 int, but test needs 0.0-1.0 float
+        ("detection_ratio_threshold", "TEST_RATIO_THRESHOLD", 25, "int_to_ratio"),
         ("detection_hard_jam_mm", "TEST_HARD_JAM_MM", 5.0, float),
         ("detection_soft_jam_time_ms", "TEST_SOFT_JAM_TIME_MS", 10000, int),
         ("detection_hard_jam_time_ms", "TEST_HARD_JAM_TIME_MS", 5000, int),
@@ -42,7 +43,18 @@ def main():
 
     for key, macro, default_value, value_type in field_specs:
         value = settings.get(key, default_value)
-        if value_type is float:
+        if value_type == "int_to_ratio":
+            # Special case: integer 0-100 stored in settings, output as 0.0-1.0 float
+            try:
+                int_value = int(value)
+                # Handle legacy float format (0.0-1.0) - convert to percentage first
+                if isinstance(value, float) and value <= 1.0:
+                    int_value = int(value * 100)
+            except (TypeError, ValueError):
+                int_value = int(default_value)
+            numeric_value = int_value / 100.0
+            macro_value = format_float(numeric_value)
+        elif value_type is float:
             try:
                 numeric_value = float(value)
             except (TypeError, ValueError):

@@ -90,8 +90,8 @@ static const SettingField kSettingFields[] = {
                    false),
     makeIntField("detection_grace_period_ms", offsetof(user_settings, detection_grace_period_ms),
                  8000),
-    makeFloatField("detection_ratio_threshold", offsetof(user_settings, detection_ratio_threshold),
-                   0.25f),
+    makeIntField("detection_ratio_threshold", offsetof(user_settings, detection_ratio_threshold),
+                 25),  // 25 = 25% passing threshold
     makeFloatField("detection_hard_jam_mm", offsetof(user_settings, detection_hard_jam_mm), 5.0f),
     makeIntField("detection_soft_jam_time_ms",
                  offsetof(user_settings, detection_soft_jam_time_ms), 10000),
@@ -204,8 +204,16 @@ void serializeField(const SettingField& field, JsonDocument& doc,
             doc[field.key] = fieldAtConst<int>(settings, field.offset);
             break;
         case SettingKind::Float:
-            doc[field.key] = fieldAtConst<float>(settings, field.offset);
+        {
+            float val = fieldAtConst<float>(settings, field.offset);
+            // mm_per_pulse needs 4 decimals for calibration precision, others need 2
+            if (strcmp(field.key, "movement_mm_per_pulse") == 0) {
+                doc[field.key] = roundf(val * 10000.0f) / 10000.0f;
+            } else {
+                doc[field.key] = roundf(val * 100.0f) / 100.0f;
+            }
             break;
+        }
         case SettingKind::String:
             doc[field.key] = fieldAtConst<String>(settings, field.offset);
             break;
@@ -234,7 +242,7 @@ SettingsManager::SettingsManager()
     settings.has_connected       = false;
     settings.detection_length_mm        = 10.0f;  // DEPRECATED: Use ratio-based detection
     settings.detection_grace_period_ms  = 5000;   // 5000ms grace period for print start (reduced from 8s)
-    settings.detection_ratio_threshold  = 0.25f;  // 25% passing threshold (~75% deficit)
+    settings.detection_ratio_threshold  = 25;     // 25% passing threshold (~75% deficit)
     settings.detection_hard_jam_mm      = 5.0f;   // 5mm expected with zero movement = hard jam
     settings.detection_soft_jam_time_ms = 7000;   // 7 seconds to signal slow clog (balanced for quick detection)
     settings.detection_hard_jam_time_ms = 3000;   // 3 seconds of negligible flow (quick response to complete jams)
@@ -282,6 +290,20 @@ bool SettingsManager::load()
             continue;
         }
         applyVariant(field, value, settings);
+    }
+
+    // Migration: handle legacy 0.0-1.0 float format for detection_ratio_threshold
+    // Old format stored 0.40 for 40%, new format stores 40
+    if (doc.containsKey("detection_ratio_threshold"))
+    {
+        float rawValue = doc["detection_ratio_threshold"].as<float>();
+        if (rawValue > 0.0f && rawValue <= 1.0f)
+        {
+            // Legacy 0.0-1.0 format, convert to 0-100
+            settings.detection_ratio_threshold = static_cast<int>(rawValue * 100.0f + 0.5f);
+            logger.logf(LOG_NORMAL, "Migrated detection_ratio_threshold: %.2f -> %d%%",
+                        rawValue, settings.detection_ratio_threshold);
+        }
     }
 
     // Clamp to valid range (0=Normal, 1=Verbose, 2=Pin Values)
@@ -400,7 +422,8 @@ int SettingsManager::getDetectionGracePeriodMs()
 
 float SettingsManager::getDetectionRatioThreshold()
 {
-    return getSettings().detection_ratio_threshold;
+    // Stored as 0-100 int, returned as 0.0-1.0 float for JamDetector compatibility
+    return getSettings().detection_ratio_threshold / 100.0f;
 }
 
 float SettingsManager::getDetectionHardJamMm()
@@ -575,11 +598,14 @@ void SettingsManager::setDetectionGracePeriodMs(int periodMs)
     settings.detection_grace_period_ms = periodMs;
 }
 
-void SettingsManager::setDetectionRatioThreshold(float threshold)
+void SettingsManager::setDetectionRatioThreshold(int thresholdPercent)
 {
     if (!isLoaded)
         load();
-    settings.detection_ratio_threshold = threshold;
+    // Clamp to valid range (0-100%)
+    if (thresholdPercent < 0) thresholdPercent = 0;
+    if (thresholdPercent > 100) thresholdPercent = 100;
+    settings.detection_ratio_threshold = thresholdPercent;
 }
 
 void SettingsManager::setDetectionHardJamMm(float mmThreshold)
