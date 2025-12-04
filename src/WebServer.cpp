@@ -123,7 +123,7 @@ void WebServer::begin()
             if (jsonObj.containsKey("detection_ratio_threshold"))
             {
                 settingsManager.setDetectionRatioThreshold(
-                    jsonObj["detection_ratio_threshold"].as<float>());
+                    jsonObj["detection_ratio_threshold"].as<int>());
             }
             if (jsonObj.containsKey("detection_hard_jam_mm"))
             {

@@ -1884,13 +1884,13 @@
 
                     <div class="form-group">
                         <label class="form-label">Filament Movement per Pulse (mm)</label>
-                        <input type="number" step="0.01" class="form-input" id="movement_mm_per_pulse" value="${currentSettings.movement_mm_per_pulse || 2.88}" min="0.1" max="10">
+                        <input type="number" step="0.01" class="form-input" id="movement_mm_per_pulse" value="${(currentSettings.movement_mm_per_pulse || 2.88).toFixed(4)}" min="0.1" max="10">
                         <p class="form-help">Distance filament moves per sensor rotation. Default: 2.88mm per the SFS 2.0 specification. Enable 'Auto-calibrate sensor at print end' to automatically adjust this value, or manually calibrate by measuring actual vs. expected filament usage over a test print. Different sensor batches may vary slightly.</p>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Reduce Pulses to (%)</label>
-                        <input type="number" step="1" class="form-input" id="pulse_reduction_percent" value="${currentSettings.pulse_reduction_percent || 100}" min="0" max="100">
+                        <input type="number" step="1" class="form-input" id="pulse_reduction_percent" value="${Math.round(currentSettings.pulse_reduction_percent || 100)}" min="0" max="100">
                         <p class="form-help">Simulate under-extrusion by counting only a percentage of pulses. 100% = normal operation, 50% = every other pulse, 20% = 1 out of 5 pulses, 0% = complete blockage. Useful for testing jam detection without physically modifying filament flow.</p>
                     </div>
 
@@ -1902,7 +1902,7 @@
 
                     <div class="form-group" style="opacity: 0.5; pointer-events: none;">
                         <label class="form-label">Purge Line Filament (mm) <span style="color: var(--text-secondary); font-size: 0.9em;">(Reserved for future use)</span></label>
-                        <input type="number" class="form-input" id="purge_filament_mm" value="${currentSettings.purge_filament_mm !== undefined ? currentSettings.purge_filament_mm : 47}" min="0" step="0.5" disabled>
+                        <input type="number" class="form-input" id="purge_filament_mm" value="${(currentSettings.purge_filament_mm !== undefined ? currentSettings.purge_filament_mm : 47).toFixed(1)}" min="0" step="0.5" disabled>
                         <p class="form-help">This setting is reserved for potential future features. Currently not used by the jam detection algorithm.</p>
                     </div>
 
@@ -1910,7 +1910,7 @@
 
                     <div class="form-group">
                         <label class="form-label">Soft Jam Ratio Threshold (%)</label>
-                        <input type="number" class="form-input" id="detection_ratio_threshold" value="${(currentSettings.detection_ratio_threshold * 100 || 25)}" min="5" max="50">
+                        <input type="number" class="form-input" id="detection_ratio_threshold" value="${currentSettings.detection_ratio_threshold || 25}" min="5" max="50">
                         <p class="form-help">Percentage of expected filament movement that must actually occur to be considered normal. For example, 60% means if flow drops below 60% of expected for longer than the soft jam time threshold, a soft jam is triggered. Higher = more sensitive (warns on smaller deficits); lower = more tolerant (only severe under-extrusion triggers).</p>
                     </div>
 
@@ -1922,7 +1922,7 @@
 
                     <div class="form-group">
                         <label class="form-label">Hard Jam Distance Threshold (mm)</label>
-                        <input type="number" step="0.5" class="form-input" id="detection_hard_jam_mm" value="${currentSettings.detection_hard_jam_mm || 5.0}" min="1" max="15">
+                        <input type="number" step="0.5" class="form-input" id="detection_hard_jam_mm" value="${(currentSettings.detection_hard_jam_mm || 5.0).toFixed(1)}" min="1" max="15">
                         <p class="form-help">If the printer commands at least this much filament movement but the sensor detects zero pulses for the hard jam time threshold, a hard jam is triggered. Lower = more sensitive to complete blockages. Increase if you have extruder slippage or very soft filament. Default: 5mm.</p>
                     </div>
 
@@ -2028,7 +2028,7 @@
                     start_print_timeout: parseInt(document.getElementById('start_print_timeout').value) * 1000,
                     enabled: document.getElementById('enabled').checked,
                     detection_grace_period_ms: parseInt(document.getElementById('detection_grace_period_ms').value),
-                      detection_ratio_threshold: parseFloat(document.getElementById('detection_ratio_threshold').value) / 100,
+                    detection_ratio_threshold: parseInt(document.getElementById('detection_ratio_threshold').value),
                       detection_hard_jam_mm: parseFloat(document.getElementById('detection_hard_jam_mm').value),
                       detection_soft_jam_time_ms: parseInt(document.getElementById('detection_soft_jam_time_ms').value) * 1000,
                       detection_hard_jam_time_ms: parseInt(document.getElementById('detection_hard_jam_time_ms').value) * 1000,
