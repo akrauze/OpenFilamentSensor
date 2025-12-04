@@ -105,4 +105,13 @@ void loop()
     {
         webServer.loop();
     }
+
+    // Strategic 1ms delay to reduce CPU usage while maintaining detection accuracy.
+    // This yields to the FreeRTOS scheduler, reducing CPU from 100% spin to ~10-20%.
+    // 1ms is well below all critical timing thresholds:
+    // - Motion sensor: ~60ms between pulses at typical speeds
+    // - Jam detector: 250ms update interval
+    // - Printer polling: 250ms status interval
+    vTaskDelay(pdMS_TO_TICKS(1));
 }
+
