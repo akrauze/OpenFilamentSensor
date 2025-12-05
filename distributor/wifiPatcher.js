@@ -53,17 +53,36 @@ const patchBuffer = (buffer, ssid, passwd) => {
     return patched.buffer;
 };
 
-const defaultLog = () => {};
+const defaultLog = () => { };
 
-export function initWifiPatcher({ installButton, openButton, dialog, form, statusEl, log = defaultLog }) {
-    if (!installButton || !openButton || !dialog || !form || !statusEl) {
+/**
+ * Initialize Wi‑Fi patching UI and return an API to manage and apply SSID/password patches.
+ *
+ * @param {Object} options - Configuration and DOM elements for the patcher.
+ * @param {HTMLElement} [options.installButton] - Optional element whose `manifest` attribute will be updated for legacy install workflows.
+ * @param {HTMLElement} options.openButton - Button that opens the patch dialog; disabled after a patch is applied.
+ * @param {HTMLElement} options.dialog - Dialog element that contains the patch form and controls.
+ * @param {HTMLFormElement} options.form - Form element used to collect SSID and password.
+ * @param {HTMLElement} options.statusEl - Element where status messages are displayed.
+ * @param {(message: string, level?: string) => void} [options.log] - Optional logger function; defaults to internal logger.
+ * @returns {Object} API for managing patches:
+ *   - updateBaseManifest(manifestUrl: string): Replace the base manifest URL and clear any applied patches.
+ *   - clearPatch(): Revoke any created object URLs and restore the original state.
+ *   - patchFirmware(ssid: string, passwd: string, firmwareUrl?: string): Apply the SSID/password to a firmware image and return an ArrayBuffer containing the patched firmware.
+ *   - getPatchedManifestUrl(): Return the patched manifest object URL when a patch has been applied, or `null` otherwise.
+ */
+export function initWifiPatcher({ installButton, openButton, resetButton, dialog, form, statusEl, log = defaultLog }) {
+    // installButton is now optional since we're using custom flasher
+    if (!openButton || !dialog || !form || !statusEl) {
         return {
-            updateBaseManifest: () => {},
-            clearPatch: () => {}
+            updateBaseManifest: () => { },
+            clearPatch: () => { },
+            getPatchedManifestUrl: () => null,
+            patchFirmware: async () => { throw new Error('WiFi patcher not initialized'); }
         };
     }
 
-    let baseManifest = installButton.getAttribute('manifest') || '';
+    let baseManifest = installButton?.getAttribute('manifest') || '';
     let manifestBlobUrl = null;
     let binaryBlobUrl = null;
     let patching = false;
@@ -95,12 +114,24 @@ export function initWifiPatcher({ installButton, openButton, dialog, form, statu
         patchApplied = false;
         openButton.disabled = false;
         openButton.textContent = defaultOpenLabel;
-        if (baseManifest) {
-            installButton.setAttribute('manifest', baseManifest);
-        } else {
-            installButton.removeAttribute('manifest');
+
+        if (resetButton) {
+            resetButton.classList.add('hidden');
+        }
+
+        // Only update installButton if it exists (legacy ESP Web Tools support)
+        if (installButton) {
+            if (baseManifest) {
+                installButton.setAttribute('manifest', baseManifest);
+            } else {
+                installButton.removeAttribute('manifest');
+            }
         }
         setStatus(DEFAULT_STATUS_MESSAGE);
+    };
+
+    const getPatchedManifestUrl = () => {
+        return patchApplied ? manifestBlobUrl : null;
     };
 
     const updateBaseManifest = (manifestUrl) => {
@@ -157,12 +188,20 @@ export function initWifiPatcher({ installButton, openButton, dialog, form, statu
                 URL.revokeObjectURL(manifestBlobUrl);
             }
             manifestBlobUrl = URL.createObjectURL(new Blob([JSON.stringify(patchedManifest)], { type: 'application/json' }));
-            installButton.setAttribute('manifest', manifestBlobUrl);
+            // Only update installButton if it exists (legacy ESP Web Tools support)
+            if (installButton) {
+                installButton.setAttribute('manifest', manifestBlobUrl);
+            }
         }
 
         patchApplied = true;
         openButton.disabled = true;
         openButton.textContent = 'Patch applied';
+
+        if (resetButton) {
+            resetButton.classList.remove('hidden');
+        }
+
         setStatus('Patched SSID/password applied.');
         log('Wi-Fi settings patched locally before flashing.');
 
@@ -198,12 +237,22 @@ export function initWifiPatcher({ installButton, openButton, dialog, form, statu
         }
     });
 
-    const resetButton = form.querySelector('[data-reset]');
+    // Handle internal reset button if present
+    const internalResetBtn = form.querySelector('[data-reset]');
+    if (internalResetBtn) {
+        internalResetBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            clearPatches();
+            closeDialog();
+            log('Wi-Fi patch cleared, using default manifest.');
+        });
+    }
+
+    // Handle external reset button
     if (resetButton) {
         resetButton.addEventListener('click', (event) => {
             event.preventDefault();
             clearPatches();
-            closeDialog();
             log('Wi-Fi patch cleared, using default manifest.');
         });
     }
@@ -215,6 +264,7 @@ export function initWifiPatcher({ installButton, openButton, dialog, form, statu
     return {
         updateBaseManifest,
         clearPatch: clearPatches,
-        patchFirmware
+        patchFirmware,
+        getPatchedManifestUrl
     };
 }
