@@ -204,13 +204,13 @@ class TestBuildAndRelease(unittest.TestCase):
     
     def test_build_and_release_exists(self):
         """Verify build_and_release.py exists"""
-        script_path = os.path.join('..', 'tools', 'build_and_release.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build_and_release.py')
         self.assertTrue(os.path.exists(script_path),
                        "build_and_release.py should exist in tools/")
     
     def test_build_and_release_has_main_function(self):
         """Verify build_and_release.py has main entry point"""
-        script_path = os.path.join('..', 'tools', 'build_and_release.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build_and_release.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -221,7 +221,7 @@ class TestBuildAndRelease(unittest.TestCase):
     
     def test_version_increment_modes(self):
         """Verify version increment modes are defined"""
-        script_path = os.path.join('..', 'tools', 'build_and_release.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build_and_release.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -233,7 +233,7 @@ class TestBuildAndRelease(unittest.TestCase):
     
     def test_board_to_distributor_mapping(self):
         """Verify board to distributor directory mapping exists"""
-        script_path = os.path.join('..', 'tools', 'build_and_release.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build_and_release.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -243,16 +243,16 @@ class TestBuildAndRelease(unittest.TestCase):
 
 class TestCaptureLogs(unittest.TestCase):
     """Test capture_logs.py functionality"""
-    
+
     def test_capture_logs_exists(self):
         """Verify capture_logs.py exists"""
-        script_path = os.path.join('..', 'tools', 'capture_logs.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'capture_logs.py')
         self.assertTrue(os.path.exists(script_path),
                        "capture_logs.py should exist in tools/")
     
     def test_capture_logs_imports_requests(self):
         """Verify capture_logs.py uses requests library"""
-        script_path = os.path.join('..', 'tools', 'capture_logs.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'capture_logs.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -261,7 +261,7 @@ class TestCaptureLogs(unittest.TestCase):
     
     def test_capture_logs_has_main_loop(self):
         """Verify capture_logs.py has polling mechanism"""
-        script_path = os.path.join('..', 'tools', 'capture_logs.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'capture_logs.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -273,7 +273,7 @@ class TestCaptureLogs(unittest.TestCase):
     
     def test_log_directory_handling(self):
         """Verify LOG_DIR is defined and used"""
-        script_path = os.path.join('..', 'tools', 'capture_logs.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'capture_logs.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -283,16 +283,16 @@ class TestCaptureLogs(unittest.TestCase):
 
 class TestToolsLauncher(unittest.TestCase):
     """Test tools-launcher.py functionality"""
-    
+
     def test_tools_launcher_exists(self):
         """Verify tools-launcher.py exists"""
-        script_path = os.path.join('..', 'tools', 'tools-launcher.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'tools-launcher.py')
         self.assertTrue(os.path.exists(script_path),
                        "tools-launcher.py should exist in tools/")
     
     def test_tools_launcher_has_menu(self):
         """Verify launcher has interactive menu"""
-        script_path = os.path.join('..', 'tools', 'tools-launcher.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'tools-launcher.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -305,16 +305,16 @@ class TestToolsLauncher(unittest.TestCase):
 
 class TestSetBuildTimestamp(unittest.TestCase):
     """Test set_build_timestamp.py functionality"""
-    
+
     def test_set_build_timestamp_exists(self):
         """Verify set_build_timestamp.py exists"""
-        script_path = os.path.join('..', 'tools', 'set_build_timestamp.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'set_build_timestamp.py')
         self.assertTrue(os.path.exists(script_path),
                        "set_build_timestamp.py should exist in tools/")
     
     def test_timestamp_format_generation(self):
         """Verify timestamp formatting logic exists"""
-        script_path = os.path.join('..', 'tools', 'set_build_timestamp.py')
+        script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'set_build_timestamp.py')
         if os.path.exists(script_path):
             with open(script_path, 'r') as f:
                 content = f.read()
@@ -327,16 +327,16 @@ class TestSetBuildTimestamp(unittest.TestCase):
 
 class TestGitHubWorkflow(unittest.TestCase):
     """Test GitHub Actions workflow configuration"""
-    
+
     def test_release_workflow_exists(self):
         """Verify release-firmware.yml workflow exists"""
-        workflow_path = os.path.join('..', '.github', 'workflows', 'release-firmware.yml')
+        workflow_path = os.path.join(os.path.dirname(__file__), '..', '.github', 'workflows', 'release-firmware.yml')
         self.assertTrue(os.path.exists(workflow_path),
                        "release-firmware.yml workflow should exist")
     
     def test_workflow_has_matrix_build(self):
         """Verify workflow uses matrix build strategy"""
-        workflow_path = os.path.join('..', '.github', 'workflows', 'release-firmware.yml')
+        workflow_path = os.path.join(os.path.dirname(__file__), '..', '.github', 'workflows', 'release-firmware.yml')
         if os.path.exists(workflow_path):
             with open(workflow_path, 'r') as f:
                 content = f.read()
@@ -347,8 +347,8 @@ class TestGitHubWorkflow(unittest.TestCase):
     
     def test_workflow_builds_all_boards(self):
         """Verify workflow builds for all supported boards"""
-        workflow_path = os.path.join('..', '.github', 'workflows', 'release-firmware.yml')
-        targets_path = os.path.join('..', 'tools', 'build-targets.yml')
+        workflow_path = os.path.join(os.path.dirname(__file__), '..', '.github', 'workflows', 'release-firmware.yml')
+        targets_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build-targets.yml')
         
         if os.path.exists(workflow_path) and os.path.exists(targets_path):
             with open(workflow_path, 'r') as f:
@@ -359,7 +359,7 @@ class TestGitHubWorkflow(unittest.TestCase):
     
     def test_workflow_creates_release(self):
         """Verify workflow has release creation step"""
-        workflow_path = os.path.join('..', '.github', 'workflows', 'release-firmware.yml')
+        workflow_path = os.path.join(os.path.dirname(__file__), '..', '.github', 'workflows', 'release-firmware.yml')
         if os.path.exists(workflow_path):
             with open(workflow_path, 'r') as f:
                 content = f.read()
@@ -372,7 +372,7 @@ class TestGitHubWorkflow(unittest.TestCase):
     
     def test_workflow_generates_checksums(self):
         """Verify workflow generates checksums for artifacts"""
-        workflow_path = os.path.join('..', '.github', 'workflows', 'release-firmware.yml')
+        workflow_path = os.path.join(os.path.dirname(__file__), '..', '.github', 'workflows', 'release-firmware.yml')
         if os.path.exists(workflow_path):
             with open(workflow_path, 'r') as f:
                 content = f.read()
@@ -382,16 +382,16 @@ class TestGitHubWorkflow(unittest.TestCase):
 
 class TestBuildTargets(unittest.TestCase):
     """Test build-targets.yml configuration"""
-    
+
     def test_build_targets_exists(self):
         """Verify build-targets.yml exists"""
-        targets_path = os.path.join('..', 'tools', 'build-targets.yml')
+        targets_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build-targets.yml')
         self.assertTrue(os.path.exists(targets_path),
                        "build-targets.yml should exist in tools/")
     
     def test_build_targets_is_valid_yaml(self):
         """Verify build-targets.yml is valid YAML"""
-        targets_path = os.path.join('..', 'tools', 'build-targets.yml')
+        targets_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build-targets.yml')
         if os.path.exists(targets_path):
             try:
                 import yaml
@@ -411,8 +411,8 @@ class TestBuildTargets(unittest.TestCase):
     
     def test_all_platformio_envs_valid(self):
         """Verify all environments in build-targets.yml exist in platformio.ini"""
-        targets_path = os.path.join('..', 'tools', 'build-targets.yml')
-        platformio_ini = os.path.join('..', 'platformio.ini')
+        targets_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'build-targets.yml')
+        platformio_ini = os.path.join(os.path.dirname(__file__), '..', 'platformio.ini')
         
         if os.path.exists(targets_path) and os.path.exists(platformio_ini):
             try:
@@ -439,25 +439,25 @@ class TestEdgeCasesAndErrorHandling(unittest.TestCase):
     def test_board_config_invalid_board(self):
         """Test board_config.py handles invalid board names"""
         try:
-            from tools.board_config import get_chip_family_for_board
-            
+            import board_config
+
             with self.assertRaises(ValueError):
-                get_chip_family_for_board('invalid_board_name_xyz')
+                board_config.get_chip_family_for_board('invalid_board_name_xyz')
         except ImportError:
             self.skipTest("board_config module not in path")
     
     def test_board_config_validate_returns_bool(self):
         """Test board_config validation returns boolean"""
         try:
-            from tools.board_config import validate_board_environment
-            
+            import board_config
+
             # Valid board should return True
-            result = validate_board_environment('esp32s3')
+            result = board_config.validate_board_environment('esp32s3')
             self.assertIsInstance(result, bool)
             self.assertTrue(result)
-            
+
             # Invalid board should return False
-            result = validate_board_environment('nonexistent')
+            result = board_config.validate_board_environment('nonexistent')
             self.assertIsInstance(result, bool)
             self.assertFalse(result)
         except ImportError:

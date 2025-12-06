@@ -42,7 +42,7 @@ Expected output: All tests pass with green ✓ indicators.
 
 When running the complete test suite, you should see output similar to:
 
-```
+```text
 [C++ Tests]
 Building pulse_simulator...
 Running FilamentMotionSensor tests...
@@ -109,7 +109,7 @@ Runtime: ~15 seconds
 
 If a test fails, you will see output like:
 
-```
+```text
 [FAIL] test_jam_detector - Assertion failed at line 42
   Expected: pressure_spike_detected = true
   Got: pressure_spike_detected = false

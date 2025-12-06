@@ -11,6 +11,7 @@ const assert = require('assert');
 // ANSI colors
 const COLOR_GREEN = '\x1b[32m';
 const COLOR_RED = '\x1b[31m';
+const COLOR_YELLOW = '\x1b[33m';
 const COLOR_RESET = '\x1b[0m';
 
 let testsPassed = 0;
@@ -466,8 +467,8 @@ function testStylesCssExists() {
 function testWebUIFaviconExists() {
     const faviconPaths = [
         path.join(__dirname, '..', 'distributor', 'favicon.ico'),
-        path.join('..', 'webui_lite', 'favicon.ico'),
-        path.join('..', 'data', 'lite', 'favicon.ico')
+        path.join(__dirname, '..', 'webui_lite', 'favicon.ico'),
+        path.join(__dirname, '..', 'data', 'lite', 'favicon.ico')
     ];
     
     let foundFavicon = false;
@@ -488,7 +489,7 @@ function testWebUIFaviconExists() {
 }
 
 function testWebUIBuildScript() {
-    const buildScriptPath = path.join('..', 'webui_lite', 'build.js');
+    const buildScriptPath = path.join(__dirname, '..', 'webui_lite', 'build.js');
     
     if (fs.existsSync(buildScriptPath)) {
         const content = fs.readFileSync(buildScriptPath, 'utf8');
@@ -584,4 +585,4 @@ function runAllTests() {
 }
 
 // Run tests
-runAllTests();
+process.exit(runAllTests());
