@@ -7,8 +7,8 @@ This project uses two focused GitHub Actions workflows:
    - Steps:
      - Installs `g++` on Ubuntu and compiles the pulse simulator test harness (`test/build_tests.sh`).
      - Sets up Python (3.11) and Node (v20) and installs PlatformIO (plus `pyyaml`).
-     - Runs `tools/build_and_release.py --env all --local --ignore-secrets --version skip` so every supported board builds locally without touching secrets or flashing hardware.
-   - Outcome: verifies the simulator tests plus a clean (`--ignore-secrets`) build for every PlatformIO environment defined in `tools/build-targets.yml`, ensuring PRs validate all boards without producing releases.
+     - Runs `tools/build_and_release.py --env all --version skip` so every supported board builds with the default clean settings (no secrets merged) without touching secrets or flashing hardware.
+   - Outcome: verifies the simulator tests plus a clean build (the script keeps secrets out of those artifacts by default) for every PlatformIO environment defined in `tools/build-targets.yml`, ensuring PRs validate all boards without producing releases.
 
 2. **Release Workflow (`.github/workflows/release.yml`)**
    - Manually dispatched via the Actions UI.
@@ -18,7 +18,7 @@ This project uses two focused GitHub Actions workflows:
      - `prerelease`: flag to mark the GitHub Release as prerelease.
    - Steps:
      - Installs Python/Node/PlatformIO (with `pyyaml`).
-     - Runs `tools/build_and_release.py --env all --local --ignore-secrets` with the chosen version action and label; this script builds firmware/filesystem for every board sequentially and copies clean `firmware_merged.bin` plus OTA artifacts into `distributor/firmware/<board>` (see below).
+     - Runs `tools/build_and_release.py --env all --version <version-action> --firmware-label <firmware-label>` with the chosen version action and label; this script builds firmware/filesystem for every board sequentially and copies clean `firmware_merged.bin` plus OTA artifacts into `distributor/firmware/<board>` (see below).
      - Collects `.pio/build/<env>` binaries (`firmware.bin`, `firmware_merged.bin`, `littlefs.bin`, `bootloader.bin`, `partitions.bin`) into `release-assets/`, listing them and generating `checksums.txt`.
      - Reads `data/.version` for the release tag, captures the latest commit message, and publishes a GitHub Release via `softprops/action-gh-release@v2`, attaching `release-assets/*` and referencing the checksum file.
 
@@ -52,10 +52,10 @@ Each board directory gets:
 - `firmware_merged.bin` for self-contained flashing.
 - An `OTA/` subdirectory containing `firmware.bin`, `littlefs.bin`, and a generated `OTA_readme.md` (the README is currently populated with placeholder release information and release notes).
 
-The `distributor/assets/versioning` file records the last released version/date/status and board notes; `tools/build_and_release.py` updates this file during `--ignore-secrets` builds using `data/.version`.
+The `distributor/assets/versioning` file records the last released version/date/status and board notes; `tools/build_and_release.py` updates this file during clean builds (secrets are not merged) using `data/.version`.
 
 ### Alignment Summary
 
 - **CI Flow** validates builds/tests for every board but does not update the distributor or create release tags/artifacts.
 - **Release Flow** produces the exact binaries copied under `distributor/firmware/` and also publishes `release-assets/*` attachments, ensuring the GitHub Release and distributor content stay in sync with `data/.version` and `distributor/assets/versioning`.
-- To keep distributor artifacts current, rerun the release workflow (or locally `python tools/build_and_release.py --env all --local --ignore-secrets`) before pushing new release tags.
+- To keep distributor artifacts current, rerun the release workflow (or locally `python tools/build_and_release.py --env all --version skip`) before pushing new release tags.

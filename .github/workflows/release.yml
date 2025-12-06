@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -38,7 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio pyyaml
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -46,8 +46,6 @@ jobs:
         run: |
           python tools/build_and_release.py \
             --env all \
-            --local \
-            --ignore-secrets \
             --version "${{ inputs.version-action }}" \
             --firmware-label "${{ inputs.firmware-label }}"
 
@@ -91,25 +89,25 @@ jobs:
         run: |
           mkdir -p release-assets
           python - <<'PY'
-import yaml
-import shutil
-from pathlib import Path
+          import yaml
+          import shutil
+          from pathlib import Path
 
-with open("tools/build-targets.yml", encoding="utf-8") as f:
-    envs = yaml.safe_load(f).get("platformio_envs", [])
+          with open("tools/build-targets.yml", encoding="utf-8") as f:
+              envs = yaml.safe_load(f).get("platformio_envs", [])
 
-artifact_dir = Path("release-assets")
-filenames = ["firmware.bin", "firmware_merged.bin", "littlefs.bin", "bootloader.bin", "partitions.bin"]
-for env in envs:
-    build_dir = Path(".pio") / "build" / env
-    if not build_dir.exists():
-        continue
-    for name in filenames:
-        src = build_dir / name
-        if src.exists():
-            dest_name = f"{env}-{name}"
-            shutil.copy2(src, artifact_dir / dest_name)
-PY
+          artifact_dir = Path("release-assets")
+          filenames = ["firmware.bin", "firmware_merged.bin", "littlefs.bin", "bootloader.bin", "partitions.bin"]
+          for env in envs:
+              build_dir = Path(".pio") / "build" / env
+              if not build_dir.exists():
+                  continue
+              for name in filenames:
+                  src = build_dir / name
+                  if src.exists():
+                      dest_name = f"{env}-{name}"
+                      shutil.copy2(src, artifact_dir / dest_name)
+          PY
           ls release-assets
           if compgen -G "release-assets/*.bin" >/dev/null; then
             (
