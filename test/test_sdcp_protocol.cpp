@@ -82,7 +82,8 @@ public:
     
     bool isNull() const { return type == TYPE_NULL; }
     
-    float as<float>() const { return floatVal; }
+    template <typename T>
+    T as() const { return static_cast<T>(floatVal); }
     
     void setFloat(float val) {
         type = TYPE_FLOAT;

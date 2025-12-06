@@ -302,13 +302,8 @@ void testJamDetectorMultipleResumeGraces() {
 void testSDCPProtocolEmptyMainboardId() {
     std::cout << "\n=== Test: SDCPProtocol Empty Mainboard ID ===" << std::endl;
     
-    // Mock JsonDocument (simplified)
-    class MockJsonDoc {
-    public:
-        bool success = false;
-    };
-    
-    MockJsonDoc doc;
+    // Use the real ArduinoJson document that SDCPProtocol expects.
+    DynamicJsonDocument doc(512);
     String emptyId = "";
     String requestId = "test123";
     
@@ -316,6 +311,7 @@ void testSDCPProtocolEmptyMainboardId() {
     bool result = SDCPProtocol::buildCommandMessage(
         doc, 1001, requestId, emptyId, 1234567890, 0, 0
     );
+    assert(result);
     
     // Just verify it doesn't crash - actual implementation may vary
     std::cout << COLOR_GREEN << "PASS: Handles empty mainboard ID" << COLOR_RESET << std::endl;
@@ -325,12 +321,7 @@ void testSDCPProtocolEmptyMainboardId() {
 void testSDCPProtocolVeryLongRequestId() {
     std::cout << "\n=== Test: SDCPProtocol Very Long Request ID ===" << std::endl;
     
-    class MockJsonDoc {
-    public:
-        bool success = false;
-    };
-    
-    MockJsonDoc doc;
+    DynamicJsonDocument doc(512);
     
     // Create very long UUID
     String longId = "12345678901234567890123456789012345678901234567890";
@@ -339,6 +330,7 @@ void testSDCPProtocolVeryLongRequestId() {
     bool result = SDCPProtocol::buildCommandMessage(
         doc, 1001, longId, mainboardId, 1234567890, 0, 0
     );
+    assert(result);
     
     // Should handle long IDs without crashing
     std::cout << COLOR_GREEN << "PASS: Handles very long request ID" << COLOR_RESET << std::endl;

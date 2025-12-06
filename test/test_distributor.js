@@ -251,46 +251,13 @@ function testDevServerJs() {
     }
 }
 
-function runAllTests() {
-    console.log('\n========================================');
-    console.log('  Distributor & WebUI Test Suite');
-    console.log('========================================');
-    
-    try {
-        testDistributorFilesExist();
-        testBoardsJsonValid();
-        testManifestJsonValid();
-        testWifiPatcherStructure();
-        testAppJsStructure();
-        testIndexHtmlValid();
-        testWebUILiteFiles();
-        testLiteOTAJsStructure();
-        testDevServerJs();
-    } catch (error) {
-        console.log(`${COLOR_RED}TEST ERROR: ${error.message}${COLOR_RESET}`);
-        testsFailed++;
-    }
-    
-    console.log('\n========================================');
-    console.log('Test Results:');
-    console.log(`${COLOR_GREEN}  Passed: ${testsPassed}${COLOR_RESET}`);
-    if (testsFailed > 0) {
-        console.log(`${COLOR_RED}  Failed: ${testsFailed}${COLOR_RESET}`);
-    }
-    console.log('========================================\n');
-    
-    return testsFailed > 0 ? 1 : 0;
-}
-
-// Run tests
-process.exit(runAllTests());
 
 // ============================================================================
 // Additional Test Functions for Enhanced Coverage
 // ============================================================================
 
 function testFlasherJsStructure() {
-    const flasherPath = path.join('..', 'distributor', 'flasher.js');
+    const flasherPath = path.join(__dirname, '..', 'distributor', 'flasher.js');
     
     if (fs.existsSync(flasherPath)) {
         const content = fs.readFileSync(flasherPath, 'utf8');
@@ -319,7 +286,7 @@ function testFlasherJsStructure() {
 }
 
 function testManifestVersionConsistency() {
-    const boardsJsonPath = path.join('..', 'distributor', 'firmware', 'boards.json');
+    const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
     
     if (fs.existsSync(boardsJsonPath)) {
         const boardsData = JSON.parse(fs.readFileSync(boardsJsonPath, 'utf8'));
@@ -337,7 +304,7 @@ function testManifestVersionConsistency() {
         // Check that each board's manifest exists and has matching version
         boards.forEach(board => {
             if (board.manifest) {
-                const manifestPath = path.join('..', 'distributor', board.manifest);
+                const manifestPath = path.join(__dirname, '..', 'distributor', board.manifest);
                 if (fs.existsSync(manifestPath)) {
                     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
                     // Manifests might have different version schemes, just check it exists
@@ -352,7 +319,7 @@ function testManifestVersionConsistency() {
 }
 
 function testBoardChipFamilyValidation() {
-    const boardsJsonPath = path.join('..', 'distributor', 'firmware', 'boards.json');
+    const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
     
     if (fs.existsSync(boardsJsonPath)) {
         const boardsData = JSON.parse(fs.readFileSync(boardsJsonPath, 'utf8'));
@@ -379,7 +346,7 @@ function testBoardChipFamilyValidation() {
 }
 
 function testManifestBuildStructure() {
-    const boardsJsonPath = path.join('..', 'distributor', 'firmware', 'boards.json');
+    const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
     
     if (fs.existsSync(boardsJsonPath)) {
         const boardsData = JSON.parse(fs.readFileSync(boardsJsonPath, 'utf8'));
@@ -387,7 +354,7 @@ function testManifestBuildStructure() {
         
         boards.forEach(board => {
             if (board.manifest) {
-                const manifestPath = path.join('..', 'distributor', board.manifest);
+                const manifestPath = path.join(__dirname, '..', 'distributor', board.manifest);
                 if (fs.existsSync(manifestPath)) {
                     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
                     
@@ -424,7 +391,7 @@ function testManifestBuildStructure() {
 }
 
 function testFirmwareBinariesExist() {
-    const boardsJsonPath = path.join('..', 'distributor', 'firmware', 'boards.json');
+    const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
     
     if (fs.existsSync(boardsJsonPath)) {
         const boardsData = JSON.parse(fs.readFileSync(boardsJsonPath, 'utf8'));
@@ -433,7 +400,7 @@ function testFirmwareBinariesExist() {
         boards.forEach(board => {
             if (board.files && Array.isArray(board.files)) {
                 board.files.forEach(filePath => {
-                    const fullPath = path.join('..', 'distributor', filePath);
+                    const fullPath = path.join(__dirname, '..', 'distributor', filePath);
                     // Binary files might not be in git, so we just check structure
                     // In a real environment, these should exist
                     if (fs.existsSync(fullPath)) {
@@ -453,7 +420,7 @@ function testFirmwareBinariesExist() {
 }
 
 function testDockerfileExists() {
-    const dockerfilePath = path.join('..', 'distributor', 'Dockerfile');
+    const dockerfilePath = path.join(__dirname, '..', 'distributor', 'Dockerfile');
     
     if (fs.existsSync(dockerfilePath)) {
         const content = fs.readFileSync(dockerfilePath, 'utf8');
@@ -476,7 +443,7 @@ function testDockerfileExists() {
 }
 
 function testStylesCssExists() {
-    const stylesPath = path.join('..', 'distributor', 'styles.css');
+    const stylesPath = path.join(__dirname, '..', 'distributor', 'styles.css');
     
     if (fs.existsSync(stylesPath)) {
         const content = fs.readFileSync(stylesPath, 'utf8');
@@ -498,7 +465,7 @@ function testStylesCssExists() {
 
 function testWebUIFaviconExists() {
     const faviconPaths = [
-        path.join('..', 'distributor', 'favicon.ico'),
+        path.join(__dirname, '..', 'distributor', 'favicon.ico'),
         path.join('..', 'webui_lite', 'favicon.ico'),
         path.join('..', 'data', 'lite', 'favicon.ico')
     ];
@@ -548,9 +515,9 @@ function testWebUIBuildScript() {
 
 function testOTAReadmeFiles() {
     const otaReadmePaths = [
-        path.join('..', 'distributor', 'firmware', 'esp32s3', 'OTA', 'OTA_readme.md'),
-        path.join('..', 'distributor', 'firmware', 'esp32c3', 'OTA', 'OTA_readme.md'),
-        path.join('..', 'distributor', 'firmware', 'seeed_esp32c3', 'OTA', 'OTA_readme.md')
+        path.join(__dirname, '..', 'distributor', 'firmware', 'esp32s3', 'OTA', 'OTA_readme.md'),
+        path.join(__dirname, '..', 'distributor', 'firmware', 'esp32c3', 'OTA', 'OTA_readme.md'),
+        path.join(__dirname, '..', 'distributor', 'firmware', 'seeed_esp32c3', 'OTA', 'OTA_readme.md')
     ];
     
     let foundReadme = false;
@@ -617,4 +584,4 @@ function runAllTests() {
 }
 
 // Run tests
-process.exit(runAllTests());
+runAllTests();

@@ -195,27 +195,6 @@ class TestDataFiles(unittest.TestCase):
                     self.fail(f"Invalid JSON in user_settings.json: {e}")
 
 
-def run_tests():
-    """Run all tests and return exit code."""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    
-    suite.addTests(loader.loadTestsFromTestCase(TestBoardConfig))
-    suite.addTests(loader.loadTestsFromTestCase(TestExtractLogData))
-    suite.addTests(loader.loadTestsFromTestCase(TestGenerateTestSettings))
-    suite.addTests(loader.loadTestsFromTestCase(TestBuildScripts))
-    suite.addTests(loader.loadTestsFromTestCase(TestFixtures))
-    suite.addTests(loader.loadTestsFromTestCase(TestDataFiles))
-    
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    return 0 if result.wasSuccessful() else 1
-
-
-if __name__ == '__main__':
-    sys.exit(run_tests())
-
 # ============================================================================
 # Additional Test Classes for Enhanced Coverage
 # ============================================================================
