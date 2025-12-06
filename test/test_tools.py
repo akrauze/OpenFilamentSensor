@@ -38,7 +38,7 @@ class TestBoardConfig(unittest.TestCase):
         if hasattr(board_config, 'get_chip_family_for_board'):
             # Test a known board
             try:
-                result = board_config.get_chip_family_for_board('esp32-s3-dev')
+                result = board_config.get_chip_family_for_board('esp32s3')
                 self.assertIsInstance(result, str)
                 self.assertIn('ESP32', result)
             except ValueError:
@@ -49,7 +49,7 @@ class TestBoardConfig(unittest.TestCase):
         """Test board environment validation."""
         if hasattr(board_config, 'validate_board_environment'):
             # Test with a likely valid board
-            result = board_config.validate_board_environment('esp32-dev')
+            result = board_config.validate_board_environment('esp32')
             self.assertIsInstance(result, bool)
 
 
