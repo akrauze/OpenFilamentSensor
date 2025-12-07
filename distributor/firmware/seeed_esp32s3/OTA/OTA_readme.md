@@ -1,6 +1,6 @@
 # Centauri Carbon Motion Detector - OTA Update
 
-## Version: 0.5.0
+## Version: 0.5.1
 ## Board: seeed_esp32s3 (ESP32-S3)
 ## Released: 2025-12-07
 
