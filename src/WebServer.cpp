@@ -7,18 +7,45 @@
 
 #define SPIFFS LittleFS
 
+namespace
+{
+constexpr const char kRouteGetSettings[]      = "/get_settings";
+constexpr const char kRouteUpdateSettings[]   = "/update_settings";
+constexpr const char kRouteTestPause[]        = "/test_pause";
+constexpr const char kRouteTestResume[]       = "/test_resume";
+constexpr const char kRouteDiscoverPrinter[]  = "/discover_printer";
+constexpr const char kRouteSensorStatus[]     = "/sensor_status";
+constexpr const char kRouteLogsText[]         = "/api/logs_text";
+constexpr const char kRouteLogsLive[]         = "/api/logs_live";
+constexpr const char kRouteVersion[]          = "/version";
+constexpr const char kRouteStatusEvents[]     = "/status_events";
+constexpr const char kRouteLiteRoot[]         = "/lite";
+constexpr const char kRouteFavicon[]          = "/favicon.ico";
+constexpr const char kRouteRoot[]             = "/";
+constexpr const char kLiteIndexPath[]         = "/lite/index.htm";
+}  // namespace
+
 // External reference to firmware version from main.cpp
 extern const char *firmwareVersion;
 extern const char *chipFamily;
 
-// Convert __DATE__ and __TIME__ to thumbprint format MMDDYYHHMMSS
+/**
+ * @brief Produce a compact build timestamp thumbprint in MMDDYYHHMMSS format.
+ *
+ * Converts a build date and time string into a 12-digit thumbprint representing
+ * month, day, two-digit year, hour, minute, and second.
+ *
+ * @param date Build date string in the format "Mon DD YYYY" (for example, "Nov 25 2025").
+ * @param time Build time string in the format "HH:MM:SS" (for example, "08:10:22").
+ * @return String 12-character thumbprint "MMDDYYHHMMSS" (for example, "112525081022").
+ */
 String getBuildThumbprint(const char* date, const char* time) {
     // Parse __DATE__ format: "Nov 25 2025"
     const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
     char month_str[4] = {0};
     int day, year;
-    sscanf(date, "%s %d %d", month_str, &day, &year);
+    sscanf(date, "%3s %d %d", month_str, &day, &year);  // %3s limits to 3 chars + null
 
     int month = 1;
     for (int i = 0; i < 12; i++) {
@@ -63,14 +90,14 @@ String getBuildVersion() {
     return version.length() > 0 ? version : "0.0.0";
 }
 
-WebServer::WebServer(int port) : server(port), statusEvents("/status_events") {}
+WebServer::WebServer(int port) : server(port), statusEvents(kRouteStatusEvents) {}
 
 void WebServer::begin()
 {
     server.begin();
 
     // Get settings endpoint
-    server.on("/get_settings", HTTP_GET,
+    server.on(kRouteGetSettings, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
                   String jsonResponse = settingsManager.toJson(false);
@@ -78,7 +105,7 @@ void WebServer::begin()
               });
 
     server.addHandler(new AsyncCallbackJsonWebHandler(
-        "/update_settings",
+        kRouteUpdateSettings,
         [this](AsyncWebServerRequest *request, JsonVariant &json)
         {
             JsonObject jsonObj = json.as<JsonObject>();
@@ -105,7 +132,7 @@ void WebServer::begin()
             if (jsonObj.containsKey("detection_ratio_threshold"))
             {
                 settingsManager.setDetectionRatioThreshold(
-                    jsonObj["detection_ratio_threshold"].as<float>());
+                    jsonObj["detection_ratio_threshold"].as<int>());
             }
             if (jsonObj.containsKey("detection_hard_jam_mm"))
             {
@@ -156,24 +183,40 @@ void WebServer::begin()
                 settingsManager.setAutoCalibrateSensor(
                     jsonObj["auto_calibrate_sensor"].as<bool>());
             }
+            if (jsonObj.containsKey("pulse_reduction_percent"))
+            {
+                settingsManager.setPulseReductionPercent(
+                    jsonObj["pulse_reduction_percent"].as<float>());
+            }
             if (jsonObj.containsKey("test_recording_mode"))
             {
                 settingsManager.setTestRecordingMode(
                     jsonObj["test_recording_mode"].as<bool>());
             }
             bool saved = settingsManager.save();
+            if (saved) {
+                // Reload settings to apply changes immediately
+                settingsManager.load();
+            }
             jsonObj.clear();
             request->send(saved ? 200 : 500, "text/plain", saved ? "ok" : "save failed");
         }));
 
-    server.on("/test_cancel", HTTP_POST,
+    server.on(kRouteTestPause, HTTP_POST,
               [](AsyncWebServerRequest *request)
               {
                   elegooCC.pausePrint();
                   request->send(200, "text/plain", "ok");
               });
 
-    server.on("/discover_printer", HTTP_GET,
+    server.on(kRouteTestResume, HTTP_POST,
+              [](AsyncWebServerRequest *request)
+              {
+                  elegooCC.continuePrint();
+                  request->send(200, "text/plain", "ok");
+              });
+
+    server.on(kRouteDiscoverPrinter, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
                   String ip;
@@ -207,7 +250,7 @@ void WebServer::begin()
     server.addHandler(&statusEvents);
 
     // Sensor status endpoint
-    server.on("/sensor_status", HTTP_GET,
+    server.on(kRouteSensorStatus, HTTP_GET,
               [this](AsyncWebServerRequest *request)
               {
                   printer_info_t elegooStatus = elegooCC.getCurrentInformation();
@@ -249,7 +292,7 @@ void WebServer::begin()
     //           });
 
     // Raw text logs endpoint (full logs for download)
-    server.on("/api/logs_text", HTTP_GET,
+    server.on(kRouteLogsText, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
                   String textResponse = logger.getLogsAsText();
@@ -260,7 +303,7 @@ void WebServer::begin()
               });
 
     // Live logs endpoint (last 100 entries for UI display)
-    server.on("/api/logs_live", HTTP_GET,
+    server.on(kRouteLogsLive, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
                   String textResponse = logger.getLogsAsText(100);  // Only last 100 entries
@@ -268,7 +311,7 @@ void WebServer::begin()
               });
 
     // Version endpoint
-    server.on("/version", HTTP_GET,
+    server.on(kRouteVersion, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
                   // Use BUILD_DATE and BUILD_TIME if set by build script, otherwise fall back to __DATE__ and __TIME__
@@ -296,13 +339,13 @@ void WebServer::begin()
 
     // Serve lightweight UI from /lite (if available)
     // Keep explicit /lite path for backwards compatibility
-    server.serveStatic("/lite", SPIFFS, "/lite/").setDefaultFile("index.htm");
+    server.serveStatic(kRouteLiteRoot, SPIFFS, "/lite/").setDefaultFile("index.htm");
 
     // Serve favicon explicitly because the root static handler only matches "/".
-    server.serveStatic("/favicon.ico", SPIFFS, "/lite/favicon.ico");
+    server.serveStatic(kRouteFavicon, SPIFFS, "/lite/favicon.ico");
 
     // Always serve the lightweight UI at the root as well.
-    server.serveStatic("/", SPIFFS, "/lite/").setDefaultFile("index.htm");
+    server.serveStatic(kRouteRoot, SPIFFS, "/lite/").setDefaultFile("index.htm");
 
     // SPA-style routing: for any unknown GET that isn't an API or asset,
     // serve index.htm so that the frontend router can handle the path.
@@ -311,7 +354,7 @@ void WebServer::begin()
             !request->url().startsWith("/api/") &&
             !request->url().startsWith("/assets/"))
         {
-            request->send(SPIFFS, "/lite/index.htm", "text/html");
+            request->send(SPIFFS, kLiteIndexPath, "text/html");
         }
         else
         {
@@ -358,11 +401,16 @@ void WebServer::buildStatusJson(DynamicJsonDocument &jsonDoc, const printer_info
     elegoo["currentDeficitMm"]     = elegooStatus.currentDeficitMm;
     elegoo["deficitThresholdMm"]   = elegooStatus.deficitThresholdMm;
     elegoo["deficitRatio"]         = elegooStatus.deficitRatio;
+    elegoo["passRatio"]            = elegooStatus.passRatio;
+    elegoo["ratioThreshold"]       = settingsManager.getDetectionRatioThreshold();
     elegoo["hardJamPercent"]       = elegooStatus.hardJamPercent;
     elegoo["softJamPercent"]       = elegooStatus.softJamPercent;
     elegoo["movementPulses"]       = (uint32_t) elegooStatus.movementPulseCount;
     elegoo["uiRefreshIntervalMs"]  = settingsManager.getUiRefreshIntervalMs();
     elegoo["flowTelemetryStaleMs"] = settingsManager.getFlowTelemetryStaleMs();
+    elegoo["graceActive"]          = elegooStatus.graceActive;
+    elegoo["expectedRateMmPerSec"] = elegooStatus.expectedRateMmPerSec;
+    elegoo["actualRateMmPerSec"]   = elegooStatus.actualRateMmPerSec;
 }
 
 void WebServer::broadcastStatusUpdate()

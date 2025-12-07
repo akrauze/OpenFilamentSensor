@@ -6,20 +6,56 @@
 
 #include "FilamentMotionSensor.h"
 #include "Logger.h"
+#include "SDCPProtocol.h"
 #include "SettingsManager.h"
 
-#define ACK_TIMEOUT_MS 5000
-constexpr float        DEFAULT_FILAMENT_DEFICIT_THRESHOLD_MM = 8.4f;
-constexpr unsigned int EXPECTED_FILAMENT_SAMPLE_MS           = 1000;  // Log max once per second to prevent heap exhaustion
-constexpr unsigned int EXPECTED_FILAMENT_STALE_MS            = 1000;
-constexpr unsigned int SDCP_LOSS_TIMEOUT_MS                  = 10000;
-constexpr unsigned int PAUSE_REARM_DELAY_MS                  = 3000;
-static const char*     TOTAL_EXTRUSION_HEX_KEY       = "54 6F 74 61 6C 45 78 74 72 75 73 69 6F 6E 00";
-static const char*     CURRENT_EXTRUSION_HEX_KEY =
-    "43 75 72 72 65 6E 74 45 78 74 72 75 73 69 6F 6E 00";
+#define ACK_TIMEOUT_MS SDCPTiming::ACK_TIMEOUT_MS
+constexpr float        DEFAULT_FILAMENT_DEFICIT_THRESHOLD_MM = SDCPDefaults::FILAMENT_DEFICIT_THRESHOLD_MM;
+constexpr unsigned int EXPECTED_FILAMENT_SAMPLE_MS           = SDCPTiming::EXPECTED_FILAMENT_SAMPLE_MS;  // Log max once per second to prevent heap exhaustion
+constexpr unsigned int EXPECTED_FILAMENT_STALE_MS            = SDCPTiming::EXPECTED_FILAMENT_STALE_MS;
+constexpr unsigned int SDCP_LOSS_TIMEOUT_MS                  = SDCPTiming::SDCP_LOSS_TIMEOUT_MS;
+constexpr unsigned int PAUSE_REARM_DELAY_MS                  = SDCPTiming::PAUSE_REARM_DELAY_MS;
+static const char*     TOTAL_EXTRUSION_HEX_KEY       = SDCPKeys::TOTAL_EXTRUSION_HEX;
+static const char*     CURRENT_EXTRUSION_HEX_KEY     = SDCPKeys::CURRENT_EXTRUSION_HEX;
 // UDP discovery port used by the Elegoo SDCP implementation (matches the
 // Home Assistant integration and printer firmware).
 static const uint16_t  SDCP_DISCOVERY_PORT = 3000;
+
+namespace
+{
+JamConfig buildJamConfigFromSettings()
+{
+    JamConfig config;
+    config.ratioThreshold = settingsManager.getDetectionRatioThreshold();
+    if (config.ratioThreshold <= 0.0f || config.ratioThreshold > 1.0f)
+    {
+        config.ratioThreshold = 0.70f;
+    }
+
+    config.hardJamMm = settingsManager.getDetectionHardJamMm();
+    if (config.hardJamMm <= 0.0f)
+    {
+        config.hardJamMm = 5.0f;
+    }
+
+    config.softJamTimeMs = settingsManager.getDetectionSoftJamTimeMs();
+    if (config.softJamTimeMs <= 0)
+    {
+        config.softJamTimeMs = 3000;
+    }
+
+    config.hardJamTimeMs = settingsManager.getDetectionHardJamTimeMs();
+    if (config.hardJamTimeMs <= 0)
+    {
+        config.hardJamTimeMs = 2000;
+    }
+
+    config.graceTimeMs    = settingsManager.getDetectionGracePeriodMs();
+    config.startTimeoutMs = settingsManager.getStartPrintTimeout();
+    config.detectionMode   = static_cast<DetectionMode>(settingsManager.getDetectionMode());
+    return config;
+}
+}  // namespace
 
 // External function to get current time (from main.cpp)
 extern unsigned long getTime();
@@ -30,10 +66,21 @@ ElegooCC &ElegooCC::getInstance()
     return instance;
 }
 
+namespace
+{
+bool isRestPrintStatus(sdcp_print_status_t status)
+{
+    return status == SDCP_PRINT_STATUS_IDLE ||
+           status == SDCP_PRINT_STATUS_COMPLETE ||
+           status == SDCP_PRINT_STATUS_PAUSED ||
+           status == SDCP_PRINT_STATUS_STOPED;
+}
+}  // namespace
+
 ElegooCC::ElegooCC()
 {
-    lastMovementValue = -1;
     lastChangeTime    = 0;
+    startedAt = 0;  // Initialize to prevent invalid grace periods    lastChangeTime    = 0;
 
     mainboardID       = "";
     printStatus       = SDCP_PRINT_STATUS_IDLE;
@@ -46,42 +93,50 @@ ElegooCC::ElegooCC()
     PrintSpeedPct     = 0;
     filamentStopped   = false;
     filamentRunout    = false;
-    lastPing          = 0;
-    expectedFilamentMM         = 0;
-    actualFilamentMM           = 0;
-    lastExpectedDeltaMM        = 0;
-    expectedTelemetryAvailable = false;
-    lastSuccessfulTelemetryMs  = 0;
-    lastTelemetryReceiveMs     = 0;
-    lastStatusReceiveMs          = 0;
-    telemetryAvailableLastStatus = false;
-    movementPulseCount           = 0;
-    lastFlowLogMs                = 0;
-    lastSummaryLogMs             = 0;
-    lastPinDebugLogMs            = 0;
-    lastLoggedExpected           = -1.0f;
-    lastLoggedActual             = -1.0f;
-    lastLoggedDeficit            = -1.0f;
-    lastLoggedPrintStatus        = -1;
-    lastLoggedLayer              = -1;
-    lastLoggedTotalLayer         = -1;
-    trackingFrozen               = false;
+    transport.lastPing            = 0;
+    transport.waitingForAck       = false;
+    transport.pendingAckCommand   = -1;
+    transport.pendingAckRequestId = "";
+    transport.ackWaitStartTime    = 0;
+    transport.lastStatusRequestMs = 0;
+    expectedFilamentMM            = 0;
+    actualFilamentMM              = 0;
+    lastExpectedDeltaMM           = 0;
+    expectedTelemetryAvailable    = false;
+    lastSuccessfulTelemetryMs     = 0;
+    lastTelemetryReceiveMs        = 0;
+    lastStatusReceiveMs           = 0;
+    telemetryAvailableLastStatus  = false;
+    movementPulseCount            = 0;
+    lastFlowLogMs                 = 0;
+    lastSummaryLogMs              = 0;
+    lastPinDebugLogMs             = 0;
+    lastLoggedExpected            = -1.0f;
+    lastLoggedActual              = -1.0f;
+    lastLoggedDeficit             = -1.0f;
+    lastLoggedPrintStatus         = -1;
+    lastLoggedLayer               = -1;
+    lastLoggedTotalLayer          = -1;
+    printCandidateActive          = false;
+    printCandidateSawHoming       = false;
+    printCandidateSawLeveling     = false;
+    printCandidateConditionsMet   = false;
+    printCandidateIdleSinceMs     = 0;
+    printCandidateIdleSinceMs     = 0;
+    trackingFrozen                = false;
+    hasBeenPaused                 = false;
     motionSensor.reset();
 
-    waitingForAck       = false;
-    pendingAckCommand   = -1;
-    pendingAckRequestId = "";
-    ackWaitStartTime    = 0;
-    lastPauseRequestMs  = 0;
-    lastStatusRequestMs = 0;
-    lastPrintEndMs      = 0;
+    lastPauseRequestMs = 0;
+    lastPrintEndMs     = 0;
+    lastJamDetectorUpdateMs = 0;
 
     // TODO: send a UDP broadcast, M99999 on Port 30000, maybe using AsyncUDP.h and listen for the
     // result. this will give us the printer IP address.
 
     // event handler - use lambda to capture 'this' pointer
-    webSocket.onEvent([this](WStype_t type, uint8_t *payload, size_t length)
-                      { this->webSocketEvent(type, payload, length); });
+    transport.webSocket.onEvent([this](WStype_t type, uint8_t *payload, size_t length)
+                                { this->webSocketEvent(type, payload, length); });
 }
 
 void ElegooCC::setup()
@@ -100,10 +155,10 @@ void ElegooCC::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         case WStype_DISCONNECTED:
             logger.log("Disconnected from Centauri Carbon");
             // Reset acknowledgment state on disconnect
-            waitingForAck       = false;
-            pendingAckCommand   = -1;
-            pendingAckRequestId = "";
-            ackWaitStartTime    = 0;
+            transport.waitingForAck       = false;
+            transport.pendingAckCommand   = -1;
+            transport.pendingAckRequestId = "";
+            transport.ackWaitStartTime    = 0;
             break;
         case WStype_CONNECTED:
             logger.log("Connected to Carbon Centauri");
@@ -112,12 +167,8 @@ void ElegooCC::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
             break;
         case WStype_TEXT:
         {
-            // JSON allocation: 1200 bytes heap (was 2048 stack)
-            // Measured actual: ~1100 bytes (91% utilization)
-            // Last measured: 2025-11-26
-            // See: .claude/hardcoded-allocations.md for maintenance notes
-            DynamicJsonDocument doc(1200);
-            DeserializationError error = deserializeJson(doc, payload);
+            messageDoc.clear();
+            DeserializationError error = deserializeJson(messageDoc, payload, length);
 
             if (error)
             {
@@ -126,14 +177,14 @@ void ElegooCC::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
             }
 
             // Check if this is a command acknowledgment response
-            if (doc.containsKey("Id") && doc.containsKey("Data"))
+            if (messageDoc.containsKey("Id") && messageDoc.containsKey("Data"))
             {
-                handleCommandResponse(doc);
+                handleCommandResponse(messageDoc);
             }
             // Check if this is a status response
-            else if (doc.containsKey("Status"))
+            else if (messageDoc.containsKey("Status"))
             {
-                handleStatus(doc);
+                handleStatus(messageDoc);
             }
         }
         break;
@@ -166,13 +217,14 @@ void ElegooCC::handleCommandResponse(JsonDocument &doc)
 
         // Only log acknowledgments for commands we're actively waiting for
         // (skip STATUS commands to avoid log spam - they're sent every 250ms)
-        if (waitingForAck && cmd == pendingAckCommand && requestId == pendingAckRequestId)
+        if (transport.waitingForAck && cmd == transport.pendingAckCommand &&
+            requestId == transport.pendingAckRequestId)
         {
             logger.logf("Received acknowledgment for command %d (Ack: %d)", cmd, ack);
-            waitingForAck       = false;
-            pendingAckCommand   = -1;
-            pendingAckRequestId = "";
-            ackWaitStartTime    = 0;
+            transport.waitingForAck       = false;
+            transport.pendingAckCommand   = -1;
+            transport.pendingAckRequestId = "";
+            transport.ackWaitStartTime    = 0;
         }
 
         // Store mainboard ID if we don't have it yet
@@ -226,6 +278,7 @@ void ElegooCC::handleStatus(JsonDocument &doc)
     {
         JsonObject          printInfo = status["PrintInfo"];
         sdcp_print_status_t newStatus = printInfo["Status"].as<sdcp_print_status_t>();
+        sdcp_print_status_t previousStatus = printStatus;
 
         // Any time we receive a well-formed PrintInfo block, treat SDCP
         // telemetry as available at the connection level, even if this
@@ -236,18 +289,31 @@ void ElegooCC::handleStatus(JsonDocument &doc)
 
         if (newStatus != printStatus)
         {
+            // Track preparation sequence for new-print detection.
+            updatePrintStartCandidate(previousStatus, newStatus);
+
+            // Update paused state tracking
+            if (newStatus == SDCP_PRINT_STATUS_PAUSED || newStatus == SDCP_PRINT_STATUS_PAUSING)
+            {
+                hasBeenPaused = true;
+            }
+            else if (newStatus == SDCP_PRINT_STATUS_STOPED || 
+                     newStatus == SDCP_PRINT_STATUS_COMPLETE || 
+                     newStatus == SDCP_PRINT_STATUS_IDLE)
+            {
+                hasBeenPaused = false;
+            }
+
             bool wasPrinting   = (printStatus == SDCP_PRINT_STATUS_PRINTING);
             bool isPrintingNow = (newStatus == SDCP_PRINT_STATUS_PRINTING);
 
             if (isPrintingNow)
             {
                 // Transition into PRINTING.
-                // If we previously issued a jam-driven pause, treat the next
-                // PRINTING state as a resume regardless of any intermediate
+                // If we previously issued a jam-driven pause OR we have seen a paused state,
+                // treat the next PRINTING state as a resume regardless of any intermediate
                 // statuses (e.g. HEATING or other transitional codes).
-                if (jamDetector.isPauseRequested() ||
-                    printStatus == SDCP_PRINT_STATUS_PAUSED ||
-                    printStatus == SDCP_PRINT_STATUS_PAUSING)
+                if (jamDetector.isPauseRequested() || hasBeenPaused)
                 {
                     logger.log("Print status changed to printing (resume)");
                     trackingFrozen = false;
@@ -263,19 +329,36 @@ void ElegooCC::handleStatus(JsonDocument &doc)
                 }
                 else
                 {
-                    // Treat all other transitions into PRINTING as a new print.
-                    logger.log("Print status changed to printing");
-                    startedAt = statusTimestamp;
-                    resetFilamentTracking();
+                    // Treat transitions into PRINTING as a new print only after we
+                    // have observed a full preparation sequence (both leveling and
+                    // homing) starting from a resting state.
+                    if (isPrintStartCandidateSatisfied())
+                    {
+                        logger.log("Print status changed to printing");
+                        startedAt = statusTimestamp;
+                        resetFilamentTracking();
 
-                    // Log active settings for this print (excluding network config)
-                    logger.logf("Print settings: pulse=%.2fmm grace=%dms ratio_thr=%.2f hard_jam=%.1fmm soft_time=%dms hard_time=%dms",
-                               settingsManager.getMovementMmPerPulse(),
-                               settingsManager.getDetectionGracePeriodMs(),
-                               settingsManager.getDetectionRatioThreshold(),
-                               settingsManager.getDetectionHardJamMm(),
-                               settingsManager.getDetectionSoftJamTimeMs(),
-                               settingsManager.getDetectionHardJamTimeMs());
+                        // Log active settings for this print (excluding network config)
+                        logger.logf(
+                            "Print settings: pulse=%.2fmm grace=%dms ratio_thr=%.2f hard_jam=%.1fmm soft_time=%dms hard_time=%dms",
+                            settingsManager.getMovementMmPerPulse(),
+                            settingsManager.getDetectionGracePeriodMs(),
+                            settingsManager.getDetectionRatioThreshold(),
+                            settingsManager.getDetectionHardJamMm(),
+                            settingsManager.getDetectionSoftJamTimeMs(),
+                            settingsManager.getDetectionHardJamTimeMs());
+
+                        // Once we have promoted this candidate to an active print,
+                        // clear the candidate flags so the next job starts fresh.
+                        clearPrintStartCandidate();
+                    }
+                    else if (settingsManager.getVerboseLogging())
+                    {
+                        logger.logf(
+                            "PRINTING entered without full prep sequence (prev=%d new=%d), "
+                            "deferring new-print detection",
+                            (int) previousStatus, (int) newStatus);
+                    }
                 }
             }
             else if (wasPrinting)
@@ -308,9 +391,7 @@ void ElegooCC::handleStatus(JsonDocument &doc)
                         totalTicks, expectedFilamentMM, actualFilamentMM, finalDeficit,
                         movementPulseCount);
 
-                    // Auto-calibration: calculate mm_per_pulse from print data
-                    // IMPORTANT: Only calibrate on prints with good flow quality (>90%)
-                    // to avoid learning from jammed/under-extruding prints
+                    // Auto-calibration logic...
                     if (settingsManager.getAutoCalibrateSensor() && movementPulseCount > 0 &&
                         expectedFilamentMM > 50.0f)
                     {
@@ -371,17 +452,23 @@ void ElegooCC::handleStatus(JsonDocument &doc)
                     resetFilamentTracking();
                 }
             }
+            else if ((printStatus == SDCP_PRINT_STATUS_PAUSED || printStatus == SDCP_PRINT_STATUS_PAUSING) &&
+                     (newStatus == SDCP_PRINT_STATUS_STOPED || newStatus == SDCP_PRINT_STATUS_COMPLETE || newStatus == SDCP_PRINT_STATUS_IDLE))
+            {
+                 logger.log("Print stopped from paused state, resetting filament tracking");
+                 resetFilamentTracking();
+            }
         }
-    printStatus  = newStatus;
-    bool nowPrinting = isPrinting();
-    if (wasPrinting && !nowPrinting)
-    {
-        lastPrintEndMs = statusTimestamp;
-    }
-    else if (nowPrinting)
-    {
-        lastPrintEndMs = 0;
-    }
+        printStatus  = newStatus;
+        bool nowPrinting = isPrinting();
+        if (wasPrinting && !nowPrinting)
+        {
+            lastPrintEndMs = statusTimestamp;
+        }
+        else if (nowPrinting)
+        {
+            lastPrintEndMs = 0;
+        }
         currentLayer = printInfo["CurrentLayer"];
         totalLayer   = printInfo["TotalLayer"];
         progress     = printInfo["Progress"];
@@ -420,7 +507,7 @@ void ElegooCC::handleStatus(JsonDocument &doc)
     }
 }
 
-void ElegooCC::resetFilamentTracking()
+void ElegooCC::resetFilamentTracking(bool resetGrace)
 {
     unsigned long currentTime = millis();
 
@@ -494,10 +581,14 @@ bool ElegooCC::processFilamentTelemetry(JsonObject &printInfo, unsigned long cur
                 windowedSensor != lastLoggedActual ||
                 currentDeficit != lastLoggedDeficit)
             {
-                // Show SDCP expected + cumulative sensor (not windowed) for clarity
-                logger.logf("Telemetry: sdcp_exp=%.2fmm cumul_sns=%.2fmm pulses=%lu | win_exp=%.2f win_sns=%.2f deficit=%.2f",
+                JamState jamState = jamDetector.getState();
+                // Consolidated telemetry log with jam state info
+                logger.logf("Debug: sdcp_exp=%.2fmm cumul_sns=%.2fmm pulses=%lu | win_exp=%.2f win_sns=%.2f deficit=%.2f | jam=%d hard=%.2f soft=%.2f pass=%.2f grace=%d heap=%lu",
                             expectedFilamentMM, actualFilamentMM, movementPulseCount,
-                            windowedExpected, windowedSensor, currentDeficit);
+                            windowedExpected, windowedSensor, currentDeficit,
+                            jamState.jammed ? 1 : 0,
+                            jamState.hardJamPercent, jamState.softJamPercent, jamState.passRatio,
+                            jamState.graceActive ? 1 : 0, ESP.getFreeHeap());
                 lastLoggedExpected = windowedExpected;
                 lastLoggedActual = windowedSensor;
                 lastLoggedDeficit = currentDeficit;
@@ -512,20 +603,21 @@ bool ElegooCC::processFilamentTelemetry(JsonObject &printInfo, unsigned long cur
 
 void ElegooCC::pausePrint()
 {
+    jamDetector.setPauseRequested();
+    lastPauseRequestMs = millis();
+
     if (settingsManager.getSuppressPauseCommands())
     {
-        lastPauseRequestMs = millis();
         logger.logf("Pause command suppressed (suppress_pause_commands enabled)");
         return;
     }
-    if (!webSocket.isConnected())
+    if (!transport.webSocket.isConnected())
     {
         logger.logf("Pause command suppressed: printer websocket not connected");
         return;
     }
-    jamDetector.setPauseRequested();
+    
     trackingFrozen      = false;
-    lastPauseRequestMs = millis();
     logger.logf("Pause command sent to printer");
     sendCommand(SDCP_COMMAND_PAUSE_PRINT, true);
 }
@@ -537,17 +629,17 @@ void ElegooCC::continuePrint()
 
 void ElegooCC::sendCommand(int command, bool waitForAck)
 {
-    if (!webSocket.isConnected())
+    if (!transport.webSocket.isConnected())
     {
         logger.logf("Can't send command, websocket not connected: %d", command);
         return;
     }
 
     // If this command requires an ack and we're already waiting for one, skip it
-    if (waitForAck && waitingForAck)
+    if (waitForAck && transport.waitingForAck)
     {
         logger.logf("Skipping command %d - already waiting for ack from command %d", command,
-                    pendingAckCommand);
+                    transport.pendingAckCommand);
         return;
     }
 
@@ -558,80 +650,182 @@ void ElegooCC::sendCommand(int command, bool waitForAck)
     // Get current timestamp
     unsigned long timestamp = getTime();
 
-    // JSON allocation: 384 bytes stack (was 512 bytes)
-    // Measured actual: ~280 bytes (73% utilization, 27% margin)
-    // Last measured: 2025-11-26
-    // See: .claude/hardcoded-allocations.md for maintenance notes
-    StaticJsonDocument<384> doc;
-    doc["Id"] = uuidStr;
-    JsonObject data = doc.createNestedObject("Data");
-    data["Cmd"]     = command;
-    data["RequestID"]   = uuidStr;
-    data["MainboardID"] = mainboardID;
-    data["TimeStamp"]   = timestamp;
-    // Match the Home Assistant integration's client identity for SDCP commands.
-    // From = 0 is used there and is known to work reliably for pause/stop.
-    data["From"] = 0;
-
-    // Explicit empty Data object (matches existing payload structure)
-    data.createNestedObject("Data");
-
-    // Include current SDCP print and machine status, mirroring the status payload fields.
-    data["PrintStatus"] = static_cast<int>(printStatus);
-    JsonArray currentStatus = data.createNestedArray("CurrentStatus");
-    for (int s = 0; s <= 4; ++s)
+    // Reuse shared message document for outbound SDCP commands
+    messageDoc.clear();
+    if (!SDCPProtocol::buildCommandMessage(messageDoc,
+                                           command,
+                                           uuidStr,
+                                           mainboardID,
+                                           timestamp,
+                                           static_cast<int>(printStatus),
+                                           machineStatusMask))
     {
-        if (hasMachineStatus(static_cast<sdcp_machine_status_t>(s)))
-        {
-            currentStatus.add(s);
-        }
-    }
-
-    // When we know the MainboardID, include a Topic field that matches the
-    // "sdcp/request/<MainboardID>" pattern used by the Elegoo HA integration.
-    if (!mainboardID.isEmpty())
-    {
-        String topic = "sdcp/request/";
-        topic += mainboardID;
-        doc["Topic"] = topic;
+        logger.logf("Failed to build SDCP command %d: JSON document too small", command);
+        return;
     }
 
     String jsonPayload;
-    jsonPayload.reserve(384);  // Pre-allocate to prevent fragmentation
-    serializeJson(doc, jsonPayload);
-
-    // Pin Values level: Check if approaching allocation limit
-    if (settingsManager.getLogLevel() >= LOG_PIN_VALUES)
-    {
-        size_t actualSize = measureJson(doc);
-        if (actualSize > 326)  // >85% of 384 bytes
-        {
-            logger.logf(LOG_PIN_VALUES, "ElegooCC sendCommand JSON size: %zu / 384 bytes (%.1f%%)",
-                       actualSize, (actualSize * 100.0f / 384.0f));
-        }
-    }
+    serializeJson(messageDoc, jsonPayload);
 
     // If this command requires an ack, set the tracking state
     if (waitForAck)
     {
-        waitingForAck       = true;
-        pendingAckCommand   = command;
-        pendingAckRequestId = uuidStr;
-        ackWaitStartTime    = millis();
+        transport.waitingForAck       = true;
+        transport.pendingAckCommand   = command;
+        transport.pendingAckRequestId = uuidStr;
+        transport.ackWaitStartTime    = millis();
         logger.logf("Waiting for acknowledgment for command %d with request ID %s", command,
                     uuidStr.c_str());
     }
 
-    webSocket.sendTXT(jsonPayload);
+    transport.webSocket.sendTXT(jsonPayload);
     if (command == SDCP_COMMAND_STATUS)
     {
-        lastStatusRequestMs = millis();
+        transport.lastStatusRequestMs = millis();
+    }
+}
+
+void ElegooCC::clearPrintStartCandidate()
+{
+    printCandidateActive        = false;
+    printCandidateSawHoming     = false;
+    printCandidateSawLeveling   = false;
+    printCandidateConditionsMet = false;
+    printCandidateIdleSinceMs   = 0;
+}
+
+void ElegooCC::updatePrintStartCandidate(sdcp_print_status_t previousStatus,
+                                         sdcp_print_status_t newStatus)
+{
+    // Reset candidate tracking whenever we re-enter a resting state
+    // (idle, stopped, completed, or paused).
+    if (isRestPrintStatus(newStatus))
+    {
+        // Special-case IDLE: allow a short idle window before clearing the
+        // candidate so brief returns to idle during job prep don't discard
+        // the sequence. For other rest states, clear immediately.
+        if (printCandidateActive && newStatus == SDCP_PRINT_STATUS_IDLE)
+        {
+            if (printCandidateIdleSinceMs == 0)
+            {
+                printCandidateIdleSinceMs = millis();
+                if (settingsManager.getVerboseLogging())
+                {
+                    logger.log("Print start candidate entered IDLE state");
+                }
+            }
+        }
+        else
+        {
+            if (printCandidateActive && settingsManager.getVerboseLogging())
+            {
+                logger.logf("Print start candidate cleared due to rest status %d",
+                            (int) newStatus);
+            }
+            clearPrintStartCandidate();
+        }
+        return;
+    }
+
+    // Any non-rest status cancels the idle countdown.
+    printCandidateIdleSinceMs = 0;
+
+    // If we have already started a candidate sequence, update the
+    // "saw homing/leveling" flags as we observe those states.
+    if (printCandidateActive)
+    {
+        bool beforeHoming   = printCandidateSawHoming;
+        bool beforeLeveling = printCandidateSawLeveling;
+
+        if (newStatus == SDCP_PRINT_STATUS_HOMING)
+        {
+            printCandidateSawHoming = true;
+        }
+        else if (newStatus == SDCP_PRINT_STATUS_BED_LEVELING)
+        {
+            printCandidateSawLeveling = true;
+        }
+
+        bool nowConditionsMet = printCandidateSawHoming && printCandidateSawLeveling;
+        if (nowConditionsMet && !printCandidateConditionsMet)
+        {
+            printCandidateConditionsMet = true;
+            if (settingsManager.getVerboseLogging())
+            {
+                logger.log("Print start candidate conditions met (homing + leveling observed)");
+            }
+        }
+        return;
+    }
+
+    // Not currently tracking a candidate. Start one when we move out
+    // of a resting/stop state into a preparation state.
+    bool previousWasRestOrStopping = isRestPrintStatus(previousStatus) ||
+                                     previousStatus == SDCP_PRINT_STATUS_STOPPING;
+    if (!previousWasRestOrStopping)
+    {
+        return;
+    }
+
+    // Preparation states observed before a true new print: leveling,
+    // homing, heating, and a few unknown "prep-ish" codes.
+    bool isPrepState = (newStatus == SDCP_PRINT_STATUS_HOMING) ||
+                       (newStatus == SDCP_PRINT_STATUS_BED_LEVELING) ||
+                       (newStatus == SDCP_PRINT_STATUS_HEATING) ||
+                       (newStatus == SDCP_PRINT_STATUS_UNKNOWN_18) ||
+                       (newStatus == SDCP_PRINT_STATUS_UNKNOWN_19) ||
+                       (newStatus == SDCP_PRINT_STATUS_UNKNOWN_21);
+    if (!isPrepState)
+    {
+        return;
+    }
+
+    printCandidateActive        = true;
+    printCandidateSawHoming     = (newStatus == SDCP_PRINT_STATUS_HOMING);
+    printCandidateSawLeveling   = (newStatus == SDCP_PRINT_STATUS_BED_LEVELING);
+    printCandidateConditionsMet = printCandidateSawHoming && printCandidateSawLeveling;
+    printCandidateIdleSinceMs   = 0;
+
+    if (settingsManager.getVerboseLogging())
+    {
+        logger.logf("Print start candidate found (prev=%d new=%d)",
+                    (int) previousStatus, (int) newStatus);
+        if (printCandidateConditionsMet)
+        {
+            logger.log("Print start candidate conditions met (homing + leveling observed)");
+        }
+    }
+}
+
+bool ElegooCC::isPrintStartCandidateSatisfied() const
+{
+    // Require that we have seen both homing and bed leveling in this
+    // preparation sequence before treating PRINTING as a new job.
+    return printCandidateActive && printCandidateConditionsMet;
+}
+
+void ElegooCC::updatePrintStartCandidateTimeout(unsigned long currentTime)
+{
+    if (!printCandidateActive || printCandidateIdleSinceMs == 0)
+    {
+        return;
+    }
+
+    unsigned long elapsed = currentTime - printCandidateIdleSinceMs;
+    if (elapsed > 5000)
+    {
+        if (settingsManager.getVerboseLogging())
+        {
+            logger.logf("Print start candidate cleared after %lus of IDLE",
+                        elapsed / 1000UL);
+        }
+        clearPrintStartCandidate();
     }
 }
 
 void ElegooCC::maybeRequestStatus(unsigned long currentTime)
 {
-    if (!webSocket.isConnected())
+    if (!transport.webSocket.isConnected())
     {
         return;
     }
@@ -664,7 +858,8 @@ void ElegooCC::maybeRequestStatus(unsigned long currentTime)
         interval = STATUS_IDLE_INTERVAL_MS;  // 10000ms
     }
 
-    if (lastStatusRequestMs == 0 || currentTime - lastStatusRequestMs >= interval)
+    if (transport.lastStatusRequestMs == 0 ||
+        currentTime - transport.lastStatusRequestMs >= interval)
     {
         sendCommand(SDCP_COMMAND_STATUS);
     }
@@ -672,48 +867,53 @@ void ElegooCC::maybeRequestStatus(unsigned long currentTime)
 
 void ElegooCC::connect()
 {
-    if (webSocket.isConnected())
+    if (transport.webSocket.isConnected())
     {
-        webSocket.disconnect();
+        transport.webSocket.disconnect();
     }
-    webSocket.setReconnectInterval(3000);
-    ipAddress = settingsManager.getElegooIP();
-    logger.logf("Attempting connection to Elegoo CC @ %s", ipAddress.c_str());
-    webSocket.begin(ipAddress, CARBON_CENTAURI_PORT, "/websocket");
+    transport.webSocket.setReconnectInterval(3000);
+    transport.ipAddress = settingsManager.getElegooIP();
+    logger.logf("Attempting connection to Elegoo CC @ %s", transport.ipAddress.c_str());
+    transport.webSocket.begin(transport.ipAddress, CARBON_CENTAURI_PORT, "/websocket");
+}
+
+void ElegooCC::updateTransport(unsigned long currentTime)
+{
+    if (transport.ipAddress != settingsManager.getElegooIP())
+    {
+        connect();  // reconnect if configuration changed
+    }
+
+    if (transport.webSocket.isConnected())
+    {
+        if (transport.waitingForAck &&
+            (currentTime - transport.ackWaitStartTime) >= ACK_TIMEOUT_MS)
+        {
+            logger.logf("Acknowledgment timeout for command %d, resetting ack state",
+                        transport.pendingAckCommand);
+            transport.waitingForAck       = false;
+            transport.pendingAckCommand   = -1;
+            transport.pendingAckRequestId = "";
+            transport.ackWaitStartTime    = 0;
+        }
+        else if (currentTime - transport.lastPing > 29900)
+        {
+            // Keepalive ping every ~30s (sendPing() on this stack is unreliable)
+            transport.webSocket.sendTXT("ping");
+            transport.lastPing = currentTime;
+        }
+    }
+
+    transport.webSocket.loop();
 }
 
 void ElegooCC::loop()
 {
     unsigned long currentTime = millis();
 
-    // websocket IP changed, reconnect
-    if (ipAddress != settingsManager.getElegooIP())
-    {
-        connect();  // this will reconnnect if already connected
-    }
-
-    if (webSocket.isConnected())
-    {
-        // Check for acknowledgment timeout (5 seconds)
-        // TODO: need to check the actual requestId
-        if (waitingForAck && (currentTime - ackWaitStartTime) >= ACK_TIMEOUT_MS)
-        {
-            logger.logf("Acknowledgment timeout for command %d, resetting ack state",
-                        pendingAckCommand);
-            waitingForAck       = false;
-            pendingAckCommand   = -1;
-            pendingAckRequestId = "";
-            ackWaitStartTime    = 0;
-        }
-        else if (currentTime - lastPing > 29900)
-        {
-            // Keepalive ping every 30 seconds - no need to log, only log actual disconnects
-            // For all who venture to this line of code wondering why I didn't use sendPing(), it's
-            // because for some reason that doesn't work. but this does!
-            this->webSocket.sendTXT("ping");
-            lastPing = currentTime;
-        }
-    }
+    updateTransport(currentTime);
+    currentTime = millis();
+    updatePrintStartCandidateTimeout(currentTime);
 
     // Check filament sensors before determining if we should pause
     checkFilamentMovement(currentTime);
@@ -727,8 +927,35 @@ void ElegooCC::loop()
     }
 
     maybeRequestStatus(currentTime);
+}
 
-    webSocket.loop();
+bool ElegooCC::shouldApplyPulseReduction(float reductionPercent)
+{
+    static int pulseSkipCounter = 0;
+
+    // 100% or higher: count all pulses (normal operation)
+    if (reductionPercent >= 100.0f) {
+        pulseSkipCounter = 0;  // Reset counter for next time
+        return true;
+    }
+
+    // 0% or lower: count no pulses (simulate complete blockage)
+    if (reductionPercent <= 0.0f) {
+        pulseSkipCounter = 0;  // Reset counter for next time
+        return false;
+    }
+
+    // Calculate skip ratio: how many pulses to skip between counts
+    // For example: 50% -> skipRatio = 1 (skip 1, count 1), 20% -> skipRatio = 4 (skip 4, count 1)
+    int skipRatio = (int)((100.0f / reductionPercent) - 0.5f); // Round to nearest
+
+    if (pulseSkipCounter >= skipRatio) {
+        pulseSkipCounter = 0;
+        return true;  // Count this pulse
+    } else {
+        pulseSkipCounter++;
+        return false; // Skip this pulse
+    }
 }
 
 void ElegooCC::checkFilamentRunout(unsigned long currentTime)
@@ -785,11 +1012,21 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     if (currentMovementValue != lastMovementValue)
     {
         // Only trigger on RISING edge (LOW->HIGH, 0->1)
-        if (currentMovementValue == HIGH && lastMovementValue == LOW && shouldCountPulses)
-        {
-            float movementMm = settingsManager.getMovementMmPerPulse();
-            if (movementMm <= 0.0f)
-            {
+          if (currentMovementValue == HIGH && lastMovementValue == LOW && shouldCountPulses)
+          {
+              // Apply pulse reduction filter for testing
+              float reductionPercent = settingsManager.getPulseReductionPercent();
+              if (!shouldApplyPulseReduction(reductionPercent)) {
+                  // Even when skipping a pulse, update lastMovementValue so we don't repeatedly
+                  // re-evaluate the same HIGH level as a new rising edge in subsequent loop ticks.
+                  lastMovementValue = currentMovementValue;
+                  lastChangeTime    = currentTime;
+                  return; // Skip this pulse due to reduction setting
+              }
+
+              float movementMm = settingsManager.getMovementMmPerPulse();
+              if (movementMm <= 0.0f)
+              {
                 movementMm = 2.88f;  // Default sensor spec
             }
 
@@ -839,49 +1076,49 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
         return;
     }
 
-    // Build jam configuration from settings
-    JamConfig jamConfig;
-    jamConfig.ratioThreshold = settingsManager.getDetectionRatioThreshold();
-    if (jamConfig.ratioThreshold <= 0.0f || jamConfig.ratioThreshold > 1.0f) {
-        jamConfig.ratioThreshold = 0.70f;  // Default 70% pass ratio threshold
-    }
-    jamConfig.hardJamMm = settingsManager.getDetectionHardJamMm();
-    if (jamConfig.hardJamMm <= 0.0f) {
-        jamConfig.hardJamMm = 5.0f;  // Default 5mm
-    }
-    jamConfig.softJamTimeMs = settingsManager.getDetectionSoftJamTimeMs();
-    if (jamConfig.softJamTimeMs <= 0) {
-        jamConfig.softJamTimeMs = 3000;  // Default 3 seconds
-    }
-    jamConfig.hardJamTimeMs = settingsManager.getDetectionHardJamTimeMs();
-    if (jamConfig.hardJamTimeMs <= 0) {
-        jamConfig.hardJamTimeMs = 2000;  // Default 2 seconds
-    }
-    jamConfig.graceTimeMs = settingsManager.getDetectionGracePeriodMs();
-    jamConfig.startTimeoutMs = settingsManager.getStartPrintTimeout();
+    const JamConfig jamConfig = buildJamConfigFromSettings();
 
     // Get windowed distances from motion sensor
     float expectedDistance = motionSensor.getExpectedDistance();
     float actualDistance = motionSensor.getSensorDistance();
+    float windowedExpectedRate = 0.0f;
+    float windowedActualRate = 0.0f;
+    motionSensor.getWindowedRates(windowedExpectedRate, windowedActualRate);
 
     // Update jam detector and get current state
-    JamState jamState = jamDetector.update(
-        expectedDistance, actualDistance, movementPulseCount,
-        currentlyPrinting, expectedTelemetryAvailable,
-        currentTime, startedAt, jamConfig
-    );
+    // Throttle jamDetector.update() to 4Hz (250ms) to ensure accurate timing
+    if ((currentTime - lastJamDetectorUpdateMs) >= JAM_DETECTOR_UPDATE_INTERVAL_MS)
+    {
+        lastJamDetectorUpdateMs = currentTime;
+        
+        // Update jam detector and get current state
+        cachedJamState = jamDetector.update(
+            expectedDistance, actualDistance, movementPulseCount,
+            currentlyPrinting, expectedTelemetryAvailable,
+            currentTime, startedAt, jamConfig,
+            windowedExpectedRate, windowedActualRate
+        );
+        
+        // Update filament stopped state (unless latched by pause/tracking freeze)
+        if (!jamDetector.isPauseRequested() && !trackingFrozen)
+        {
+            filamentStopped = cachedJamState.jammed;
+        }
+    }
+    
+    // Use cached state for logging
+    JamState jamState = cachedJamState;
 
-    // Periodic logging with windowed and cumulative values + memory monitoring
+    // Periodic consolidated logging with all telemetry data + memory monitoring
     if (debugFlow && currentlyPrinting && (currentTime - lastFlowLogMs) >= EXPECTED_FILAMENT_SAMPLE_MS)
     {
         lastFlowLogMs = currentTime;
         uint32_t freeHeap = ESP.getFreeHeap();
 
         logger.logf(
-            "Flow: win_exp=%.2f win_sns=%.2f deficit=%.2f | cumul=%.2f pulses=%lu | "
-            "jam=%d hard=%.2f soft=%.2f pass=%.2f grace=%d heap=%lu",
+            "Debug: sdcp_exp=%.2fmm cumul_sns=%.2fmm pulses=%lu | win_exp=%.2f win_sns=%.2f deficit=%.2f | jam=%d hard=%.2f soft=%.2f pass=%.2f grace=%d heap=%lu",
+            expectedFilamentMM, actualFilamentMM, movementPulseCount,
             expectedDistance, actualDistance, jamState.deficit,
-            actualFilamentMM, movementPulseCount,
             jamState.jammed ? 1 : 0,
             jamState.hardJamPercent, jamState.softJamPercent, jamState.passRatio,
             jamState.graceActive ? 1 : 0, freeHeap);
@@ -890,18 +1127,12 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     if (summaryFlow && currentlyPrinting && !debugFlow && (currentTime - lastSummaryLogMs) >= 1000)
     {
         lastSummaryLogMs = currentTime;
-        logger.logf("Flow summary: expected=%.2fmm sensor=%.2fmm deficit=%.2fmm "
+        logger.logf("Debug summary: expected=%.2fmm sensor=%.2fmm deficit=%.2fmm "
                     "ratio=%.2f hard=%.2f%% soft=%.2f%% pass=%.2f pulses=%lu",
                     expectedDistance, actualDistance, jamState.deficit,
                     jamState.deficit / (expectedDistance > 0.1f ? expectedDistance : 1.0f),
                     jamState.hardJamPercent, jamState.softJamPercent, jamState.passRatio,
                     movementPulseCount);
-    }
-
-    // Update jam state (unless latched by pause/tracking freeze)
-    if (!jamDetector.isPauseRequested() && !trackingFrozen)
-    {
-        filamentStopped = jamState.jammed;
     }
 }
 
@@ -924,7 +1155,7 @@ bool ElegooCC::shouldPausePrint(unsigned long currentTime)
     bool           sdcpLoss      = false;
     unsigned long  lastSuccessMs = lastSuccessfulTelemetryMs;
     int            lossBehavior  = settingsManager.getSdcpLossBehavior();
-    if (webSocket.isConnected() && isPrinting() && lastSuccessMs > 0 &&
+    if (transport.webSocket.isConnected() && isPrinting() && lastSuccessMs > 0 &&
         (currentTime - lastSuccessMs) > SDCP_LOSS_TIMEOUT_MS)
     {
         sdcpLoss = true;
@@ -943,7 +1174,7 @@ bool ElegooCC::shouldPausePrint(unsigned long currentTime)
     }
 
     if (currentTime - startedAt < settingsManager.getStartPrintTimeout() ||
-        !webSocket.isConnected() || waitingForAck || !isPrinting() ||
+        !transport.webSocket.isConnected() || transport.waitingForAck || !isPrinting() ||
         !pauseCondition ||
         (lastPauseRequestMs != 0 && (currentTime - lastPauseRequestMs) < PAUSE_REARM_DELAY_MS))
     {
@@ -1020,9 +1251,9 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.currentTicks         = currentTicks;
     info.totalTicks           = totalTicks;
     info.PrintSpeedPct        = PrintSpeedPct;
-    info.isWebsocketConnected = webSocket.isConnected();
+    info.isWebsocketConnected = transport.webSocket.isConnected();
     info.currentZ             = currentZ;
-    info.waitingForAck        = waitingForAck;
+    info.waitingForAck        = transport.waitingForAck;
     info.expectedFilamentMM   = expectedFilamentMM;
     info.actualFilamentMM     = actualFilamentMM;
     info.lastExpectedDeltaMM  = lastExpectedDeltaMM;
@@ -1031,8 +1262,12 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.currentDeficitMm     = jamState.deficit;
     info.deficitThresholdMm   = 0.0f;  // No longer used (was ratioThreshold * expectedDistance)
     info.deficitRatio         = jamState.deficit / (motionSensor.getExpectedDistance() > 0.1f ? motionSensor.getExpectedDistance() : 1.0f);
+    info.passRatio            = jamState.passRatio;
     info.hardJamPercent       = jamState.hardJamPercent;
     info.softJamPercent       = jamState.softJamPercent;
+    info.graceActive          = jamState.graceActive;
+    info.expectedRateMmPerSec = jamState.expectedRateMmPerSec;
+    info.actualRateMmPerSec   = jamState.actualRateMmPerSec;
     info.movementPulseCount   = movementPulseCount;
 
     return info;

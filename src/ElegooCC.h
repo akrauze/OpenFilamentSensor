@@ -7,6 +7,7 @@
 
 #include "FilamentMotionSensor.h"
 #include "JamDetector.h"
+//#include "JamDetector_iface.h"
 #include "UUID.h"
 
 #define CARBON_CENTAURI_PORT 3030
@@ -98,20 +99,33 @@ typedef struct
     float               currentDeficitMm;
     float               deficitThresholdMm;
     float               deficitRatio;
+    float               passRatio;
     float               hardJamPercent;
     float               softJamPercent;
+    bool                graceActive;
+    float               expectedRateMmPerSec;
+    float               actualRateMmPerSec;
     unsigned long       movementPulseCount;
 } printer_info_t;
 
 class ElegooCC
 {
    private:
-    WebSocketsClient webSocket;
-    UUID             uuid;
+    struct TransportState
+    {
+        WebSocketsClient webSocket;
+        String           ipAddress;
+        unsigned long    lastPing            = 0;
+        bool             waitingForAck       = false;
+        int              pendingAckCommand   = -1;
+        String           pendingAckRequestId;
+        unsigned long    ackWaitStartTime    = 0;
+        unsigned long    lastStatusRequestMs = 0;
+    };
 
-    String ipAddress;
-
-    unsigned long lastPing;
+    TransportState        transport;
+    UUID                  uuid;
+    StaticJsonDocument<1200> messageDoc;
     // Variables to track movement sensor state
     int           lastMovementValue;  // Initialize to invalid value
     unsigned long lastChangeTime;
@@ -154,21 +168,30 @@ class ElegooCC
     int           lastLoggedLayer;
     int           lastLoggedTotalLayer;
 
+    // Print start candidate tracking (to distinguish true job start
+    // from transient/attached PRINTING states)
+    bool          printCandidateActive;
+    bool          printCandidateSawHoming;
+    bool          printCandidateSawLeveling;
+    bool          printCandidateConditionsMet;
+    unsigned long printCandidateIdleSinceMs;
+
     // Tracking state (for UI freeze on pause)
     bool          trackingFrozen;
+    bool          hasBeenPaused;
+    
+    // Jam detector state caching (for throttled updates)
+    JamState      cachedJamState;
+    unsigned long lastJamDetectorUpdateMs;
 
-    // Acknowledgment tracking
-    bool          waitingForAck;
-    int           pendingAckCommand;
-    String        pendingAckRequestId;
-    unsigned long ackWaitStartTime;
+    // Command tracking
     unsigned long lastPauseRequestMs;
-    unsigned long lastStatusRequestMs;
     unsigned long lastPrintEndMs;
-    static constexpr unsigned long STATUS_IDLE_INTERVAL_MS       = 10000;
-    static constexpr unsigned long STATUS_ACTIVE_INTERVAL_MS     = 250;
-    static constexpr unsigned long STATUS_POST_PRINT_COOLDOWN_MS = 20000;
-    static constexpr unsigned long JAM_DEBUG_INTERVAL_MS         = 1000;
+    static constexpr unsigned long STATUS_IDLE_INTERVAL_MS          = 10000;
+    static constexpr unsigned long STATUS_ACTIVE_INTERVAL_MS        = 250;
+    static constexpr unsigned long STATUS_POST_PRINT_COOLDOWN_MS    = 20000;
+    static constexpr unsigned long JAM_DEBUG_INTERVAL_MS            = 1000;
+    static constexpr unsigned long JAM_DETECTOR_UPDATE_INTERVAL_MS  = 250;  // 4Hz
 
     ElegooCC();
 
@@ -178,14 +201,22 @@ class ElegooCC
 
     void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
     void connect();
+    void updateTransport(unsigned long currentTime);
     void handleCommandResponse(JsonDocument &doc);
     void handleStatus(JsonDocument &doc);
     void sendCommand(int command, bool waitForAck = false);
+
+    // Helpers for print start detection
+    void clearPrintStartCandidate();
+    void updatePrintStartCandidate(sdcp_print_status_t previousStatus,
+                                   sdcp_print_status_t newStatus);
+    bool isPrintStartCandidateSatisfied() const;
+    void updatePrintStartCandidateTimeout(unsigned long currentTime);
    public:
     void pausePrint();
     void continuePrint();
 
-    void resetFilamentTracking();
+    void resetFilamentTracking(bool resetGrace = true);
     bool processFilamentTelemetry(JsonObject& printInfo, unsigned long currentTime);
     bool tryReadExtrusionValue(JsonObject& printInfo, const char* key, const char* hexKey,
                                float& output);
@@ -197,6 +228,7 @@ class ElegooCC
     bool isPrintJobActive();  // Returns true for any non-idle state (for polling decisions)
     bool shouldPausePrint(unsigned long currentTime);
     void checkFilamentMovement(unsigned long currentTime);
+    bool shouldApplyPulseReduction(float reductionPercent);  // Pulse reduction helper function
     void maybeRequestStatus(unsigned long currentTime);
     void checkFilamentRunout(unsigned long currentTime);
 

@@ -7,14 +7,64 @@
 struct FilamentSample
 {
     unsigned long timestampMs;
+    unsigned long durationMs;
     float         expectedMm;
     float         actualMm;
 };
 
 /**
- * Filament motion sensor with windowed tracking algorithm
- *
- * Uses sliding time window (Klipper-style) to handle calibration drift
+ * Initialize a FilamentMotionSensor instance and its internal tracking state.
+ */
+
+/**
+ * Reset all tracking state to the initial (pre-print) condition.
+ */
+
+/**
+ * Update the expected extrusion position from printer telemetry.
+ * @param totalExtrusionMm Current total extrusion measured by the printer in millimeters.
+ */
+
+/**
+ * Record a sensor pulse representing filament movement.
+ * @param mmPerPulse Distance in millimeters that a single sensor pulse represents.
+ */
+
+/**
+ * Report the positive difference where expected extrusion exceeds actual sensor-measured extrusion.
+ * @return Deficit in millimeters (zero if actual ≥ expected).
+ */
+
+/**
+ * Report the accumulated expected extrusion distance within the current tracking window or since reset.
+ * @return Expected distance in millimeters.
+ */
+
+/**
+ * Report the accumulated actual sensor-measured distance within the current tracking window or since reset.
+ * @return Actual sensor distance in millimeters.
+ */
+
+/**
+ * Fill the provided references with the average expected and actual extrusion rates over the tracking window.
+ * @param expectedRate Output reference updated with the average expected rate in millimeters per second.
+ * @param actualRate Output reference updated with the average actual (sensor) rate in millimeters per second.
+ */
+
+/**
+ * Indicate whether the sensor has received at least one expected position update from telemetry.
+ * @return `true` if an expected position update has been received, `false` otherwise.
+ */
+
+/**
+ * Indicate whether tracking is still within a grace period following initialization, retraction, or a telemetry gap.
+ * @param gracePeriodMs Grace period duration in milliseconds.
+ * @return `true` if the time since the last relevant event is less than `gracePeriodMs`, `false` otherwise.
+ */
+
+/**
+ * Compute the ratio of actual (sensor) extrusion to expected extrusion for the current window.
+ * @return Ratio `actual / expected` (0.0 or greater), or `0` if tracking is not initialized or expected is zero.
  */
 class FilamentMotionSensor
 {
@@ -40,20 +90,6 @@ class FilamentMotionSensor
     void addSensorPulse(float mmPerPulse);
 
     /**
-     * Check if jam is detected using ratio-based detection
-     * @param ratioThreshold Soft jam: deficit ratio threshold (0.7 = 70% deficit, < 30% passing)
-     * @param hardJamThresholdMm Hard jam: mm expected with zero movement to trigger
-     * @param softJamTimeMs Soft jam: how long ratio must stay bad (ms, e.g., 3000 = 3 sec)
-     * @param hardJamTimeMs Hard jam: how long zero movement required (ms, e.g., 2000 = 2 sec)
-     * @param checkIntervalMs How often isJammed() is called (ms, e.g., 1000 = every second)
-     * @param gracePeriodMs Grace period in ms after expected position update before checking
-     * @return true if jam detected (either hard or soft)
-     */
-    bool isJammed(float ratioThreshold, float hardJamThresholdMm,
-                  int softJamTimeMs, int hardJamTimeMs, int checkIntervalMs,
-                  unsigned long gracePeriodMs = 0);
-
-    /**
      * Get current deficit (how much expected exceeds actual)
      * @return Deficit in mm (0 or positive value)
      */
@@ -72,6 +108,11 @@ class FilamentMotionSensor
     float getSensorDistance();
 
     /**
+     * Get the average expected and actual rates within the tracking window.
+     */
+    void getWindowedRates(float &expectedRate, float &actualRate);
+
+    /**
      * Check if tracking has been initialized with first telemetry
      * @return true if we've received at least one expected position update
      */
@@ -88,8 +129,6 @@ class FilamentMotionSensor
      * @return Ratio (0.0 to 1.0+), or 0 if not initialized
      */
     float getFlowRatio();
-    float getHardJamProgressPercent() const;
-    float getSoftJamProgressPercent() const;
 
    private:
     // Common state
@@ -104,20 +143,9 @@ class FilamentMotionSensor
     int              nextSampleIndex;
     unsigned long    windowSizeMs;
 
-    // Jam detection trackers (some may be reported in WebUI)
-    mutable float         lastWindowDeficitMm;     // Last deficit used to compute growth rate
-    mutable unsigned long lastDeficitTimestampMs;
-    mutable unsigned long lastJamEvaluationMs;
-    mutable unsigned long hardJamAccumulatedMs;
-    mutable unsigned int  hardJamConsecutiveChecks;
-    mutable unsigned int  hardJamRequiredChecks;
-    mutable unsigned long softJamAccumulatedMs;
-    mutable int           lastSoftJamTimeMs;
-    mutable bool          softJamActive;
-    mutable float         softJamDeficitAccumMm;
-    mutable float         hardJamAccumExpectedMm;
-    mutable float         hardJamAccumActualMm;
-    unsigned long         lastSensorPulseMs;  // Track when last pulse was detected
+    // Sensor pulse tracking
+    unsigned long lastSensorPulseMs;  // Track when last pulse was detected
+    float         lastTotalExtrusionMm;  // Last known extrusion position (reset with instance)
 
     // Helper methods for windowed tracking
     void addSample(float expectedDeltaMm, float actualDeltaMm);

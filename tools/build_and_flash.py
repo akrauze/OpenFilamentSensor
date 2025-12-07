@@ -8,7 +8,7 @@ Usage (run from repo root):
   python tools/build_and_flash.py                    # Build Lite UI + firmware
 
 Options:
-  --env ENV            PlatformIO env to use (default: esp32-s3-dev)
+  --env ENV            PlatformIO env to use (default: esp32s3)
   --local              Only build Lite UI/filesystem; skip PlatformIO upload steps
   --ignore-secrets     Do not merge or package data/secrets.json
   --build-mode MODE    Build mode: (default) full build with merge, 'nofs' firmware only, 'nobin' filesystem only
@@ -26,7 +26,10 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
+
+# Import shared board configuration
+from board_config import compose_chip_family_label, get_supported_boards, validate_board_environment
 
 SECRET_FILENAME = "secrets.json"
 
@@ -58,8 +61,20 @@ def temporarily_hide_files(paths: List[str]):
 @contextmanager
 def temporarily_merge_secrets(settings_path: str, secrets_path: str, ignore: bool) -> Iterator[bool]:
     """
-    Merge secrets into user_settings.json for the duration of the context.
-    Always restores the original contents, even if later steps fail.
+    Temporarily merge secrets from a secrets file into the given user settings file for the duration of a context.
+    
+    When `ignore` is True, this context does nothing and yields False. Otherwise, reads secrets from `secrets_path`, merges the keys "ssid", "passwd", and "elegooip" into the JSON at `settings_path`, writes the merged settings to disk, and yields True; on context exit the original contents of `settings_path` are restored. Raises FileNotFoundError if `secrets_path` does not exist and `ignore` is False.
+    
+    Parameters:
+        settings_path (str): Path to the user settings JSON file that will be modified temporarily.
+        secrets_path (str): Path to the secrets JSON file providing values to merge.
+        ignore (bool): If True, skip merging and yield False.
+    
+    Returns:
+        bool: `True` if secrets were merged for the context, `False` if merging was skipped due to `ignore`.
+    
+    Side effects:
+        Overwrites `settings_path` during the context and restores its original contents on exit.
     """
     if ignore:
         yield False
@@ -107,12 +122,58 @@ def temporarily_merge_secrets(settings_path: str, secrets_path: str, ignore: boo
         print("Restored original data/user_settings.json without secrets after build.")
 
 
-def run(cmd: List[str], cwd: Optional[str] = None) -> None:
+def run(cmd: List[str], cwd: Optional[str] = None, extra_env: Optional[Dict[str, str]] = None) -> None:
+    """
+    Execute a subprocess command after printing it and optionally extending the environment.
+    
+    Runs the given command in an optional working directory, merges `extra_env` into the current process environment for the subprocess, and raises subprocess.CalledProcessError if the command exits with a non-zero status.
+    
+    Parameters:
+        cmd (List[str]): Command and arguments to execute.
+        cwd (Optional[str]): Working directory for the subprocess; uses the current working directory if None.
+        extra_env (Optional[Dict[str, str]]): Environment variables to add or override for the subprocess.
+    """
     print(f"> {' '.join(cmd)} (cwd={cwd or os.getcwd()})")
-    subprocess.run(cmd, cwd=cwd, check=True)
+
+    # Set up environment for subprocess
+    env_dict = os.environ.copy()
+    if extra_env:
+        env_dict.update(extra_env)
+
+    subprocess.run(cmd, cwd=cwd, check=True, env=env_dict)
+
+
+def run_with_build_env(
+    cmd: List[str],
+    board_env: str,
+    build_env: Dict[str, str],
+    cwd: Optional[str] = None,
+) -> None:
+    """
+    Log the resolved CHIP_FAMILY and FIRMWARE_VERSION for a PlatformIO environment and run the given command with those environment variables applied.
+    
+    Parameters:
+        cmd (List[str]): The command and arguments to execute.
+        board_env (str): The PlatformIO environment name used for display/logging.
+        build_env (Dict[str, str]): Environment mapping; expected to contain `CHIP_FAMILY` and `FIRMWARE_VERSION` which are injected into the subprocess environment.
+        cwd (Optional[str]): Working directory to run the command in, or None to use the current directory.
+    """
+    chip_family = build_env.get("CHIP_FAMILY", "")
+    firmware_label = build_env.get("FIRMWARE_VERSION", "")
+    print(
+        f"Environment '{board_env}' -> CHIP_FAMILY='{chip_family}', "
+        f"FIRMWARE_VERSION='{firmware_label}'"
+    )
+    run(cmd, cwd=cwd, extra_env=build_env)
 
 
 def ensure_executable(name: str) -> None:
+    """
+    Ensure the given executable is available on the system PATH and exit with status 1 if it is not.
+    
+    Parameters:
+        name (str): The command/executable name to check (e.g., 'npm', 'python').
+    """
     if shutil.which(name) is None:
         print(f"ERROR: `{name}` is not on PATH.")
         if name == "npm":
@@ -144,44 +205,6 @@ def read_version_file(repo_root: str) -> tuple[int, int, int]:
     return (0, 0, 0)
 
 
-def write_version_file(repo_root: str, major: int, minor: int, build: int) -> str:
-    """Write version to .version file. Returns version string."""
-    version_path = os.path.join(repo_root, "data/.version")
-    version_str = f"{major}.{minor}.{build}"
-    with open(version_path, "w", encoding="utf-8") as f:
-        f.write(version_str)
-    return version_str
-
-
-def increment_version(repo_root: str, increment_type: Optional[str]) -> Optional[str]:
-    """
-    Increment version based on type:
-    - 'build': increment build number (0.0.0 -> 0.0.1)
-    - 'version': increment minor, reset build (0.0.12 -> 0.1.0)
-    - 'release': increment major, reset minor and build (0.1.12 -> 1.0.0)
-    Returns new version string or None if no increment requested.
-    """
-    if not increment_type:
-        return None
-
-    major, minor, build = read_version_file(repo_root)
-
-    if increment_type == "build":
-        build += 1
-    elif increment_type == "version":
-        minor += 1
-        build = 0
-    elif increment_type == "release":
-        major += 1
-        minor = 0
-        build = 0
-    else:
-        return None
-
-    version_str = write_version_file(repo_root, major, minor, build)
-    print(f"Version incremented to: v{version_str}")
-    return version_str
-
 
 def create_build_version(data_dir: str, repo_root: str) -> str:
     """Create build_version.txt with current version from .version file."""
@@ -207,13 +230,21 @@ def create_build_timestamp(data_dir: str) -> str:
 
 
 def main() -> None:
+    """
+    Build and optionally flash a lightweight Web UI and firmware for ESP32 using PlatformIO.
+    
+    Parses CLI options to control which artifacts to build: lightweight web UI/filesystem, firmware, or both;
+    whether to merge per-run secrets into the filesystem image; and version increment behavior.
+    Creates temporary build timestamp and version files for filesystem images and removes them after the run.
+    Exits with non‑zero status for unsupported board environments or missing required tools.
+    """
     parser = argparse.ArgumentParser(
         description="Build Lite WebUI + firmware and flash to ESP32 via PlatformIO."
     )
     parser.add_argument(
         "--env",
-        default="esp32-s3-dev",
-        help="PlatformIO environment to use (default: esp32-s3-dev)",
+        default="esp32s3",
+        help="PlatformIO environment to use (default: esp32s3)",
     )
     parser.add_argument(
         "--local",
@@ -231,26 +262,33 @@ def main() -> None:
         default=None,
         help="Build mode: 'nofs' = firmware only (no merge), 'nobin' = filesystem only (no merge), default = full build with merge",
     )
-
-    # Version increment arguments (mutually exclusive)
-    version_group = parser.add_mutually_exclusive_group()
-    version_group.add_argument(
-        "--increment-build",
-        action="store_true",
-        help="Increment build number (0.0.0 -> 0.0.1)",
+    parser.add_argument(
+        "--chip",
+        default="ESP32",
+        help="Chip prefix to combine with the board suffix (default: ESP32).",
     )
-    version_group.add_argument(
-        "--increment-version",
-        action="store_true",
-        help="Increment version number and reset build (0.0.12 -> 0.1.0)",
-    )
-    version_group.add_argument(
-        "--increment-release",
-        action="store_true",
-        help="Increment release number and reset version and build (0.1.12 -> 1.0.0)",
+    parser.add_argument(
+        "--firmware-label",
+        default="alpha",
+        help="Firmware version string to embed into the firmware binary (default: alpha).",
     )
 
     args = parser.parse_args()
+
+    if not validate_board_environment(args.env):
+        from board_config import get_supported_boards
+        print(f"ERROR: Unsupported board environment '{args.env}'")
+        print("Supported environments:")
+        for env_name in get_supported_boards():
+            print(f"  {env_name}")
+        sys.exit(1)
+
+    firmware_label = args.firmware_label or "alpha"
+    chip_family_label = compose_chip_family_label(args.env, args.chip)
+    build_env = {
+        "CHIP_FAMILY": chip_family_label,
+        "FIRMWARE_VERSION": firmware_label,
+    }
 
     # Resolve paths relative to this file (tools/ -> repo root)
     tools_dir = os.path.dirname(os.path.abspath(__file__))
@@ -323,18 +361,6 @@ def main() -> None:
     if args.ignore_secrets:
         print("Skipping data/secrets.json merge (--ignore-secrets).")
 
-    # Handle version incrementing
-    increment_type = None
-    if args.increment_build:
-        increment_type = "build"
-    elif args.increment_version:
-        increment_type = "version"
-    elif args.increment_release:
-        increment_type = "release"
-
-    if increment_type:
-        increment_version(repo_root, increment_type)
-
     timestamp_path: Optional[str] = None
     version_path: Optional[str] = None
     try:
@@ -342,10 +368,10 @@ def main() -> None:
         if args.build_mode == "nofs":
             print("\n=== Build Mode: Firmware Only (no merge) ===")
             if args.local:
-                run([pio_cmd, "run", "-e", args.env], cwd=repo_root)
+                run_with_build_env([pio_cmd, "run", "-e", args.env], args.env, build_env, cwd=repo_root)
                 print("\nAll done. Firmware binary ready at `.pio/build/{}/firmware.bin`.".format(args.env))
             else:
-                run([pio_cmd, "run", "-e", args.env, "-t", "upload"], cwd=repo_root)
+                run_with_build_env([pio_cmd, "run", "-e", args.env, "-t", "upload"], args.env, build_env, cwd=repo_root)
                 print("\nAll done. Firmware has been flashed.")
 
         # Build mode: nobin = filesystem only (no merge)
@@ -356,7 +382,7 @@ def main() -> None:
                 version_path = create_build_version(data_dir, repo_root)
                 fs_target = "uploadfs" if not args.local else "buildfs"
                 with temporarily_hide_files(secret_file_paths):
-                    run([pio_cmd, "run", "-e", args.env, "-t", fs_target], cwd=repo_root)
+                    run_with_build_env([pio_cmd, "run", "-e", args.env, "-t", fs_target], args.env, build_env, cwd=repo_root)
 
             if args.local:
                 print("\nAll done. Filesystem binary ready at `.pio/build/{}/littlefs.bin`.".format(args.env))
@@ -374,14 +400,14 @@ def main() -> None:
                 # Filesystem upload/build (uses merged settings if present)
                 fs_target = "uploadfs" if not args.local else "buildfs"
                 with temporarily_hide_files(secret_file_paths):
-                    run([pio_cmd, "run", "-e", args.env, "-t", fs_target], cwd=repo_root)
+                    run_with_build_env([pio_cmd, "run", "-e", args.env, "-t", fs_target], args.env, build_env, cwd=repo_root)
 
                 if args.local:
-                    run([pio_cmd, "run", "-e", args.env], cwd=repo_root)
+                    run_with_build_env([pio_cmd, "run", "-e", args.env], args.env, build_env, cwd=repo_root)
                     print("\nAll done. Build artifacts are ready in `data/` and `.pio/build`.")
                 else:
                     # Firmware upload (will build firmware first if needed)
-                    run([pio_cmd, "run", "-e", args.env, "-t", "upload"], cwd=repo_root)
+                    run_with_build_env([pio_cmd, "run", "-e", args.env, "-t", "upload"], args.env, build_env, cwd=repo_root)
                     print("\nAll done. Firmware and filesystem have been flashed.")
     except FileNotFoundError as exc:
         print(f"ERROR: {exc}")
