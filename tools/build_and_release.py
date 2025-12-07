@@ -629,23 +629,12 @@ def build_firmware(
     # Build filesystem with timestamp and version info
     print(f"\n=== Building Filesystem ===")
 
-    # Create build info files before filesystem build
-    timestamp_path = None
-    version_path = None
-
-    try:
-        with temporarily_merge_secrets(settings_path, secrets_path, ignore_secrets):
-            timestamp_path = create_build_timestamp(data_dir)
-            version_path = create_build_version(data_dir, repo_root)
-            fs_cmd = [pio_cmd, "run", "-e", board_env, "-t", "buildfs"]
-            with temporarily_hide_files(secret_file_paths):
-                run_with_build_env(fs_cmd, board_env, build_env, cwd=repo_root)
-    finally:
-        # Clean up temporary files
-        if timestamp_path and os.path.exists(timestamp_path):
-            os.remove(timestamp_path)
-        if version_path and os.path.exists(version_path):
-            os.remove(version_path)
+    with temporarily_merge_secrets(settings_path, secrets_path, ignore_secrets):
+        create_build_timestamp(data_dir)
+        create_build_version(data_dir, repo_root)
+        fs_cmd = [pio_cmd, "run", "-e", board_env, "-t", "buildfs"]
+        with temporarily_hide_files(secret_file_paths):
+            run_with_build_env(fs_cmd, board_env, build_env, cwd=repo_root)
 
     print(f"\n=== Build Complete ===")
     print(f"Firmware and filesystem built successfully for {board_env}")
