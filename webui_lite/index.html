@@ -1198,7 +1198,7 @@
         const logAccumulator = {
             entries: [],        // Chronological array of log lines
             seen: new Set(),    // Deduplication set for O(1) lookup
-            maxEntries: 10000,  // Memory safety limit
+            maxEntries: 100000,  // Memory safety limit
             sessionStart: null  // Timestamp when accumulation started
         };
 
