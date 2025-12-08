@@ -42,8 +42,10 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Build target
+        env:
+          FIRMWARE_VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          pio run -e ${{ matrix.env }} --build-flag "-D FIRMWARE_VERSION='\"${{ steps.get_version.outputs.VERSION }}'\""
+          pio run -e ${{ matrix.env }}
 
       - name: Prepare build artifact
         run: |
@@ -131,7 +133,10 @@ jobs:
         run: |
           # Generates release notes from commits between this tag and the previous one.
           # For the very first tag, it lists all commits.
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${{ steps.get_version.outputs.VERSION }}^" 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | sed -n '2p' 2>/dev/null)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..${{ steps.get_version.outputs.VERSION }} >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
