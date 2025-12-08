@@ -878,11 +878,11 @@
                 </div>
                 <div class="status-grid" id="statusGrid">
                     <!-- Will be populated by JavaScript -->
-                    </div>
-                    <div class="status-help" id="statusHelpMessage">
-                        Tap any status tile to learn what it means.
-                    </div>
                 </div>
+                <div class="status-help" id="statusHelpMessage">
+                    Tap any status tile to learn what it means.
+                </div>
+            </div>
 
             <div class="card">
                 <div class="card-header">
@@ -992,14 +992,7 @@
                     <div class="progress-fill" id="progressFill">0%</div>
                 </div>
 
-                <div style="margin-top: 30px;">
-                    <h3 style="color: var(--accent-primary); margin-bottom: 16px;">Alternative: ElegantOTA</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 20px;">
-                        Use the built-in ElegantOTA interface for firmware updates.
-                    </p>
-                    <button type="button" class="btn" onclick="window.open('/update', '_blank')">Open ElegantOTA
-                        →</button>
-                </div>
+
             </div>
         </div>
 
@@ -1021,11 +1014,13 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">Firmware Thumbprint</span>
-                    <span class="info-value" id="firmwareThumbprint" style="font-family: 'Consolas', monospace;">Loading...</span>
+                    <span class="info-value" id="firmwareThumbprint"
+                        style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Filesystem Thumbprint</span>
-                    <span class="info-value" id="filesystemThumbprint" style="font-family: 'Consolas', monospace;">Loading...</span>
+                    <span class="info-value" id="filesystemThumbprint"
+                        style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
 
                 <h3 style="color: var(--accent-primary); margin: 24px 0 16px;">Hardware</h3>
@@ -1050,6 +1045,17 @@
                 <div class="info-row">
                     <span class="info-label">IP Address</span>
                     <span class="info-value" id="ipAddress">Loading...</span>
+                </div>
+
+                <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                    <h3 style="color: var(--accent-primary); margin-bottom: 16px;">Device Actions</h3>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-secondary" onclick="resetDevice()">🔄 Restart
+                            Device</button>
+                    </div>
+                    <p class="form-help" style="margin-top: 12px;">
+                        Restarts the ESP32. Connection will be lost temporarily.
+                    </p>
                 </div>
             </div>
         </div>
@@ -1420,7 +1426,7 @@
                 return;
             }
             lastSnapshotMs = now;
-            fetchStatusSnapshot({ suppressToast: true }).catch(() => {});
+            fetchStatusSnapshot({ suppressToast: true }).catch(() => { });
         }
 
         function setStatusHelpMessage(helpKey) {
@@ -1856,6 +1862,28 @@
             statusEventSource.onmessage = null;
             statusEventSource.close();
             statusEventSource = null;
+        }
+
+        async function resetDevice() {
+            if (!confirm('Are you sure you want to restart the device? This will temporarily disconnect the UI.')) {
+                return;
+            }
+            try {
+                const response = await fetch('/api/reset', { method: 'POST' });
+                if (response.ok) {
+                    showToast('Device is restarting...', 'info');
+                    // Attempt to reconnect after a delay
+                    setTimeout(() => {
+                        showToast('Attempting to reconnect...', 'info');
+                        window.location.reload();
+                    }, 5000);
+                } else {
+                    showToast('Failed to restart device', 'error');
+                }
+            } catch (error) {
+                showToast('Request sent - device may be restarting', 'info');
+                setTimeout(() => window.location.reload(), 5000);
+            }
         }
 
         window.addEventListener('load', () => {

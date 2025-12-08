@@ -944,11 +944,11 @@
                 </div>
                 <div class="status-grid" id="statusGrid">
                     <!-- Will be populated by JavaScript -->
-                    </div>
-                    <div class="status-help" id="statusHelpMessage">
-                        Tap any status tile to learn what it means.
-                    </div>
                 </div>
+                <div class="status-help" id="statusHelpMessage">
+                    Tap any status tile to learn what it means.
+                </div>
+            </div>
 
             <div class="card">
                 <div class="card-header">
@@ -985,7 +985,8 @@
             <div class="card">
                 <div class="card-header">
                     <span>Debug Data Dump</span>
-                    <small style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 12px;">Every field from the status snapshot</small>
+                    <small style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 12px;">Every field from
+                        the status snapshot</small>
                 </div>
                 <div class="status-grid" id="debugGrid">
                     <!-- Populated by JavaScript -->
@@ -1069,7 +1070,8 @@
             <div class="card">
                 <div class="card-header">
                     <span>System Logs</span>
-                    <span id="logAccumulatorStatus" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: normal;">0 entries</span>
+                    <span id="logAccumulatorStatus"
+                        style="font-size: 0.85rem; color: var(--text-secondary); font-weight: normal;">0 entries</span>
                 </div>
                 <div class="btn-group">
                     <button type="button" class="btn" onclick="refreshLogs()">Refresh</button>
@@ -1078,7 +1080,8 @@
                     <button type="button" class="btn btn-secondary" onclick="clearAccumulatedLogs()">Reset</button>
                 </div>
                 <p class="form-help" style="margin: 12px 0;">
-                    Logs accumulate in your browser since page load. Download captures all entries, even those no longer on the device.
+                    Logs accumulate in your browser since page load. Download captures all entries, even those no longer
+                    on the device.
                 </p>
                 <div class="log-container" id="logContainer">
                     <div class="log-entry info">Waiting for logs...</div>
@@ -1106,14 +1109,7 @@
                     <div class="progress-fill" id="progressFill">0%</div>
                 </div>
 
-                <div style="margin-top: 30px;">
-                    <h3 style="color: var(--accent-primary); margin-bottom: 16px;">Alternative: ElegantOTA</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 20px;">
-                        Use the built-in ElegantOTA interface for firmware updates.
-                    </p>
-                    <button type="button" class="btn" onclick="window.open('/update', '_blank')">Open ElegantOTA
-                        →</button>
-                </div>
+
             </div>
         </div>
 
@@ -1131,15 +1127,18 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">Firmware Thumbprint</span>
-                    <span class="info-value" id="firmwareThumbprint" style="font-family: 'Consolas', monospace;">Loading...</span>
+                    <span class="info-value" id="firmwareThumbprint"
+                        style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Filesystem Thumbprint</span>
-                    <span class="info-value" id="filesystemThumbprint" style="font-family: 'Consolas', monospace;">Loading...</span>
+                    <span class="info-value" id="filesystemThumbprint"
+                        style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Build</span>
-                    <span class="info-value" id="buildVersion" style="font-family: 'Consolas', monospace;">Loading...</span>
+                    <span class="info-value" id="buildVersion"
+                        style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
 
                 <h3 style="color: var(--accent-primary); margin: 24px 0 16px;">Hardware / Network</h3>
@@ -1154,6 +1153,17 @@
                 <div class="info-row">
                     <span class="info-label">IP Address</span>
                     <span class="info-value" id="ipAddress">Loading...</span>
+                </div>
+
+                <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                    <h3 style="color: var(--accent-primary); margin-bottom: 16px;">Device Actions</h3>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-secondary" onclick="resetDevice()">🔄 Restart
+                            Device</button>
+                    </div>
+                    <p class="form-help" style="margin-top: 12px;">
+                        Restarts the ESP32. Connection will be lost temporarily.
+                    </p>
                 </div>
             </div>
         </div>
@@ -1816,7 +1826,7 @@
                 return;
             }
             lastSnapshotMs = now;
-            fetchStatusSnapshot({ suppressToast: true }).catch(() => {});
+            fetchStatusSnapshot({ suppressToast: true }).catch(() => { });
         }
 
         function setStatusHelpMessage(helpKey) {
@@ -2043,11 +2053,11 @@
                     enabled: document.getElementById('enabled').checked,
                     detection_grace_period_ms: parseInt(document.getElementById('detection_grace_period_ms').value),
                     detection_ratio_threshold: parseInt(document.getElementById('detection_ratio_threshold').value),
-                      detection_hard_jam_mm: parseFloat(document.getElementById('detection_hard_jam_mm').value),
-                      detection_soft_jam_time_ms: parseInt(document.getElementById('detection_soft_jam_time_ms').value) * 1000,
-                      detection_hard_jam_time_ms: parseInt(document.getElementById('detection_hard_jam_time_ms').value) * 1000,
-                      detection_mode: parseInt(document.getElementById('detection_mode').value),
-                      sdcp_loss_behavior: parseInt(document.getElementById('sdcp_loss_behavior').value),
+                    detection_hard_jam_mm: parseFloat(document.getElementById('detection_hard_jam_mm').value),
+                    detection_soft_jam_time_ms: parseInt(document.getElementById('detection_soft_jam_time_ms').value) * 1000,
+                    detection_hard_jam_time_ms: parseInt(document.getElementById('detection_hard_jam_time_ms').value) * 1000,
+                    detection_mode: parseInt(document.getElementById('detection_mode').value),
+                    sdcp_loss_behavior: parseInt(document.getElementById('sdcp_loss_behavior').value),
                     flow_telemetry_stale_ms: parseInt(document.getElementById('flow_telemetry_stale_ms').value),
                     ui_refresh_interval_ms: parseInt(document.getElementById('ui_refresh_interval_ms').value),
                     log_level: parseInt(document.getElementById('log_level').value),
@@ -2408,6 +2418,28 @@
             statusEventSource.onmessage = null;
             statusEventSource.close();
             statusEventSource = null;
+        }
+
+        async function resetDevice() {
+            if (!confirm('Are you sure you want to restart the device? This will temporarily disconnect the UI.')) {
+                return;
+            }
+            try {
+                const response = await fetch('/api/reset', { method: 'POST' });
+                if (response.ok) {
+                    showToast('Device is restarting...', 'info');
+                    // Attempt to reconnect after a delay
+                    setTimeout(() => {
+                        showToast('Attempting to reconnect...', 'info');
+                        window.location.reload();
+                    }, 5000);
+                } else {
+                    showToast('Failed to restart device', 'error');
+                }
+            } catch (error) {
+                showToast('Request sent - device may be restarting', 'info');
+                setTimeout(() => window.location.reload(), 5000);
+            }
         }
 
         window.addEventListener('load', () => {
