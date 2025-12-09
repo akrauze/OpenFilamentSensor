@@ -9,6 +9,8 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    env:
+      TZ: America/New_York
     steps:
       - uses: actions/checkout@v4
 
@@ -22,6 +24,8 @@ jobs:
 
   matrix-source:
     runs-on: ubuntu-latest
+    env:
+      TZ: America/New_York
     outputs:
       board-matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -42,6 +46,8 @@ jobs:
   build:
     needs: [unit-tests, matrix-source]
     runs-on: ubuntu-latest
+    env:
+      TZ: America/New_York
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix-source.outputs.board-matrix) }}
