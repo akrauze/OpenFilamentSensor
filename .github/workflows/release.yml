@@ -161,11 +161,13 @@ jobs:
       - name: Sanitize user settings (WiFi/IP)
         shell: bash
         run: |
+          PLACEHOLDER="PLACEHOLDER_WIFI_STRING_32_CHARS"
           if [ -f "data/user_settings.json" ]; then
             python - <<'PY'
           import json
           from pathlib import Path
           
+          PLACEHOLDER = "PLACEHOLDER_WIFI_STRING_32_CHARS"
           path = Path("data/user_settings.json")
           try:
               raw = path.read_text(encoding="utf-8")
@@ -173,11 +175,11 @@ jobs:
           except Exception:
               data = {}
           
-          # Blank WiFi credentials and set a safe placeholder IP
+          # Normalize WiFi credentials to placeholder and set a safe placeholder IP
           if "ssid" in data:
-              data["ssid"] = ""
+              data["ssid"] = PLACEHOLDER
           if "passwd" in data:
-              data["passwd"] = ""
+              data["passwd"] = PLACEHOLDER
           if "elegooip" in data:
               data["elegooip"] = "1.1.1.1"
           
@@ -320,6 +322,27 @@ jobs:
           find all-release-assets -type f -name "*.bin" -exec mv {} release-assets/ \;
           ls -l release-assets
           (cd release-assets && sha256sum *.bin > checksums.txt)
+
+      - name: Stage firmware assets for GitHub Pages
+        shell: bash
+        run: |
+          RAW_TAG="${{ steps.get_version.outputs.TAG }}"
+          STRIPPED="$(echo "$RAW_TAG" | sed -E 's/^v+//I')"
+          NORMALIZED_TAG="v${STRIPPED}"
+          echo "Normalizing tag '$RAW_TAG' -> '$NORMALIZED_TAG' for Pages path"
+          PAGES_DIR="pages-publish/releases/${NORMALIZED_TAG}"
+          mkdir -p "${PAGES_DIR}"
+          cp -v release-assets/* "${PAGES_DIR}/"
+
+      - name: Publish assets to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: pages-publish
+          keep_files: true
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
 
       - name: Generate Release Notes
         id: release_notes
