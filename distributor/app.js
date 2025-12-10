@@ -5,41 +5,45 @@ const GITHUB_OWNER = 'harpua555';
 const GITHUB_REPO = 'centauri-carbon-motion-detector';
 const DEFAULT_RELEASE_TAG = null; // Use "latest" unless a tag is provided via query string
 
-const selectors = {
-    releaseSelect: document.getElementById('releaseSelect'),
-    boardSelect: document.getElementById('boardSelect'),
-    boardStatus: document.getElementById('boardStatus'),
-    notesList: document.getElementById('notesList'),
-    releaseNotesTitle: document.getElementById('releaseNotesTitle'),
-    flashTrigger: document.getElementById('flashTrigger'),
-    downloadOtaBtn: document.getElementById('downloadOtaBtn'),
-    logStream: document.getElementById('logStream'),
-    copyLogBtn: document.getElementById('copyLogBtn'),
-    clearLogBtn: document.getElementById('clearLogBtn'),
-    heroDate: document.getElementById('activeFirmwareDate'),
-    wifiForm: document.getElementById('wifiPatchForm'),
-    wifiStatus: document.getElementById('wifiPatchStatus'),
-    wifiAcceptBtn: document.getElementById('wifiAcceptBtn'),
-    wifiResetBtn: document.getElementById('wifiResetBtn'),
-    wifiPatchDialog: document.getElementById('wifiPatchDialog'),
-    // Warning dialog elements
-    warningDialog: document.getElementById('warningDialog'),
-    eraseDeviceCheckbox: document.getElementById('eraseDeviceCheckbox'),
-    confirmFlashBtn: document.getElementById('confirmFlashBtn'),
-    boardCount: document.getElementById('boardCount'),
-    boardNotes: document.getElementById('boardNotes'),
-    webSerialWarning: document.getElementById('webSerialWarning'),
-    // Port selector elements
-    portSelectorDialog: document.getElementById('portSelectorDialog'),
-    portList: document.getElementById('portList'),
-    authorizeNewPort: document.getElementById('authorizeNewPort'),
-    // Flash overlay elements
-    flashOverlay: document.getElementById('flashOverlay'),
-    flashOverlayClose: document.getElementById('flashOverlayClose'),
-    flashStage: document.getElementById('flashStage'),
-    flashPercent: document.getElementById('flashPercent'),
-    flashProgressFill: document.getElementById('flashProgressFill'),
-    flashLogStream: document.getElementById('flashLogStream')
+let selectors = {};
+
+const initSelectors = () => {
+    selectors = {
+        releaseSelect: document.getElementById('releaseSelect'),
+        boardSelect: document.getElementById('boardSelect'),
+        boardStatus: document.getElementById('boardStatus'),
+        notesList: document.getElementById('notesList'),
+        releaseNotesTitle: document.getElementById('releaseNotesTitle'),
+        flashTrigger: document.getElementById('flashTrigger'),
+        downloadOtaBtn: document.getElementById('downloadOtaBtn'),
+        logStream: document.getElementById('logStream'),
+        copyLogBtn: document.getElementById('copyLogBtn'),
+        clearLogBtn: document.getElementById('clearLogBtn'),
+        heroDate: document.getElementById('activeFirmwareDate'),
+        wifiForm: document.getElementById('wifiPatchForm'),
+        wifiStatus: document.getElementById('wifiPatchStatus'),
+        wifiAcceptBtn: document.getElementById('wifiAcceptBtn'),
+        wifiResetBtn: document.getElementById('wifiResetBtn'),
+        wifiPatchDialog: document.getElementById('wifiPatchDialog'),
+        // Warning dialog elements
+        warningDialog: document.getElementById('warningDialog'),
+        eraseDeviceCheckbox: document.getElementById('eraseDeviceCheckbox'),
+        confirmFlashBtn: document.getElementById('confirmFlashBtn'),
+        boardCount: document.getElementById('boardCount'),
+        boardNotes: document.getElementById('boardNotes'),
+        webSerialWarning: document.getElementById('webSerialWarning'),
+        // Port selector elements
+        portSelectorDialog: document.getElementById('portSelectorDialog'),
+        portList: document.getElementById('portList'),
+        authorizeNewPort: document.getElementById('authorizeNewPort'),
+        // Flash overlay elements
+        flashOverlay: document.getElementById('flashOverlay'),
+        flashOverlayClose: document.getElementById('flashOverlayClose'),
+        flashStage: document.getElementById('flashStage'),
+        flashPercent: document.getElementById('flashPercent'),
+        flashProgressFill: document.getElementById('flashProgressFill'),
+        flashLogStream: document.getElementById('flashLogStream')
+    };
 };
 
 const state = {
@@ -958,6 +962,9 @@ const attachEvents = () => {
 };
 
 const init = async () => {
+    // Initialize selectors after DOM is ready
+    initSelectors();
+
     // Check Web Serial support
     if (!('serial' in navigator)) {
         appendLog('Web Serial API is unavailable in this browser.', 'warn');
