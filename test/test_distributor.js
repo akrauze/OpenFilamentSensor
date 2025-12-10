@@ -504,7 +504,7 @@ function testOTAReadmeFiles() {
     }
 }
 
-function runAllTests() {
+async function runAllTests() {
     console.log('\n========================================');
     console.log('  Distributor & WebUI Test Suite');
     console.log('  (Enhanced Coverage)');
