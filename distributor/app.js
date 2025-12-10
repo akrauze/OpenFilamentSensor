@@ -9,8 +9,6 @@ const selectors = {
     releaseSelect: document.getElementById('releaseSelect'),
     boardSelect: document.getElementById('boardSelect'),
     boardStatus: document.getElementById('boardStatus'),
-    boardVersion: document.getElementById('boardVersion'),
-    boardRelease: document.getElementById('boardRelease'),
     notesList: document.getElementById('notesList'),
     releaseNotesTitle: document.getElementById('releaseNotesTitle'),
     flashTrigger: document.getElementById('flashTrigger'),
@@ -455,8 +453,6 @@ const hydrateBoardDetails = (board) => {
         state.selected = null;
         selectors.boardStatus.textContent = '--';
         selectors.boardStatus.dataset.state = 'unknown';
-        selectors.boardVersion.textContent = '--';
-        selectors.boardRelease.textContent = '--';
         selectors.releaseNotesTitle.textContent = 'Release notes';
         renderNotes(selectors.boardNotes, [], 'Select a board to view release notes');
         updateButtonStates();
@@ -466,12 +462,9 @@ const hydrateBoardDetails = (board) => {
 
     state.selected = board;
     const status = board.status || state.versioning?.status || 'unknown';
-    const version = board.version || state.versioning?.version || '--';
 
     selectors.boardStatus.textContent = status;
     selectors.boardStatus.dataset.state = status;
-    selectors.boardVersion.textContent = version;
-    selectors.boardRelease.textContent = formatDate(board.released);
     selectors.releaseNotesTitle.textContent = 'Release notes';
     renderNotes(selectors.boardNotes, board.boardNotes, 'No release notes for this board.');
     updateButtonStates();
@@ -774,12 +767,14 @@ const downloadOtaFiles = async (board) => {
                 remoteUrl: board.assetUrls?.remote?.littlefs || '',
                 patchable: true
             },
-            { name: 'OTA_readme.md', generator: () => {
-                const tag = board.releaseTag || board.version || 'unknown';
-                const published = board.released ? formatDate(board.released) : 'unknown date';
-                const content = `Centauri Carbon Motion Detector OTA\nBoard: ${board.variant || boardId}\nRelease: ${tag}\nPublished: ${published}\nSource: GitHub Releases (${GITHUB_OWNER}/${GITHUB_REPO})\n\nIncludes firmware.bin and littlefs.bin from the selected release.`;
-                return new Blob([content], { type: 'text/markdown' });
-            } }
+            {
+                name: 'OTA_readme.md', generator: () => {
+                    const tag = board.releaseTag || board.version || 'unknown';
+                    const published = board.released ? formatDate(board.released) : 'unknown date';
+                    const content = `Centauri Carbon Motion Detector OTA\nBoard: ${board.variant || boardId}\nRelease: ${tag}\nPublished: ${published}\nSource: GitHub Releases (${GITHUB_OWNER}/${GITHUB_REPO})\n\nIncludes firmware.bin and littlefs.bin from the selected release.`;
+                    return new Blob([content], { type: 'text/markdown' });
+                }
+            }
         ];
         const zip = new JSZip();
         const wifiForm = document.getElementById('wifiPatchForm');
