@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const https = require('https');
 
 // ANSI colors
 const COLOR_GREEN = '\x1b[32m';
@@ -25,8 +26,7 @@ function testDistributorFilesExist() {
         'app.js',
         'wifiPatcher.js',
         'index.html',
-        'styles.css',
-        'firmware/boards.json'
+        'styles.css'
     ];
     
     for (const file of requiredFiles) {
@@ -66,46 +66,7 @@ function testBoardsJsonValid() {
 
 function testManifestJsonValid() {
     console.log('\n=== Test: Manifest JSON Files Valid ===');
-    
-    const firmwareDir = path.join(__dirname, '..', 'distributor', 'firmware');
-    
-    if (!fs.existsSync(firmwareDir)) {
-        console.log(`${COLOR_RED}SKIP: Firmware directory not found${COLOR_RESET}`);
-        return;
-    }
-    
-    const boardDirs = fs.readdirSync(firmwareDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
-    
-    let manifestCount = 0;
-    
-    for (const boardDir of boardDirs) {
-        const manifestPath = path.join(firmwareDir, boardDir, 'manifest.json');
-        
-        if (fs.existsSync(manifestPath)) {
-            const content = fs.readFileSync(manifestPath, 'utf8');
-            try {
-                const manifest = JSON.parse(content);
-                
-                // Verify expected structure
-                assert(manifest.name, 'manifest.json should have a name field');
-                assert(manifest.version || manifest.builds,
-                       'manifest.json should have version or builds field');
-                
-                manifestCount++;
-            } catch (e) {
-                assert.fail(`Invalid JSON in ${boardDir}/manifest.json: ${e.message}`);
-            }
-        }
-    }
-    
-    if (manifestCount > 0) {
-        console.log(`${COLOR_GREEN}PASS: All ${manifestCount} manifest.json files are valid${COLOR_RESET}`);
-        testsPassed++;
-    } else {
-        console.log(`${COLOR_RED}SKIP: No manifest.json files found${COLOR_RESET}`);
-    }
+    console.log(`${COLOR_YELLOW}SKIP: Local manifest files no longer required; assets served from GitHub Pages.${COLOR_RESET}`);
 }
 
 function testWifiPatcherStructure() {
@@ -288,34 +249,17 @@ function testFlasherJsStructure() {
 
 function testManifestVersionConsistency() {
     const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
-    
     if (fs.existsSync(boardsJsonPath)) {
         const boardsData = JSON.parse(fs.readFileSync(boardsJsonPath, 'utf8'));
         const boards = boardsData.boards || [];
-        
-        // Collect all versions
-        const versions = boards.map(b => b.version);
+        const versions = boards.map(b => b.version).filter(Boolean);
         const uniqueVersions = [...new Set(versions)];
-        
-        // All boards should ideally have the same version
         if (uniqueVersions.length > 1) {
-            console.log(`${COLOR_YELLOW}WARNING: Multiple versions found across boards: ${uniqueVersions.join(', ')}${COLOR_RESET}`);
+            console.log(`${COLOR_YELLOW}NOTE: Multiple board versions in boards.json: ${uniqueVersions.join(', ')}${COLOR_RESET}`);
+        } else {
+            console.log(`${COLOR_GREEN}PASS: Board versions are consistent in boards.json${COLOR_RESET}`);
+            testsPassed++;
         }
-        
-        // Check that each board's manifest exists and has matching version
-        boards.forEach(board => {
-            if (board.manifest) {
-                const manifestPath = path.join(__dirname, '..', 'distributor', board.manifest);
-                if (fs.existsSync(manifestPath)) {
-                    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-                    // Manifests might have different version schemes, just check it exists
-                    assert(manifest.version, `Manifest for ${board.id} should have version`);
-                }
-            }
-        });
-        
-        console.log(`${COLOR_GREEN}PASS: Manifest version consistency checked${COLOR_RESET}`);
-        testsPassed++;
     }
 }
 
@@ -350,48 +294,18 @@ function testManifestBuildStructure() {
     const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
     
     if (fs.existsSync(boardsJsonPath)) {
-        const boardsData = JSON.parse(fs.readFileSync(boardsJsonPath, 'utf8'));
-        const boards = boardsData.boards || [];
-        
-        boards.forEach(board => {
-            if (board.manifest) {
-                const manifestPath = path.join(__dirname, '..', 'distributor', board.manifest);
-                if (fs.existsSync(manifestPath)) {
-                    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-                    
-                    // Check required fields
-                    assert(manifest.name, `Manifest for ${board.id} should have name`);
-                    assert(manifest.builds, `Manifest for ${board.id} should have builds array`);
-                    assert(Array.isArray(manifest.builds), 
-                           `Manifest builds for ${board.id} should be array`);
-                    
-                    // Check build structure
-                    manifest.builds.forEach((build, idx) => {
-                        assert(build.chipFamily, 
-                               `Build ${idx} for ${board.id} should have chipFamily`);
-                        assert(build.parts, 
-                               `Build ${idx} for ${board.id} should have parts array`);
-                        assert(Array.isArray(build.parts),
-                               `Build parts for ${board.id} should be array`);
-                        
-                        // Check parts structure
-                        build.parts.forEach((part, pidx) => {
-                            assert(part.path !== undefined,
-                                   `Part ${pidx} of build ${idx} for ${board.id} should have path`);
-                            assert(typeof part.offset === 'number',
-                                   `Part ${pidx} of build ${idx} for ${board.id} should have numeric offset`);
-                        });
-                    });
-                }
-            }
-        });
-        
-        console.log(`${COLOR_GREEN}PASS: All manifest build structures are valid${COLOR_RESET}`);
-        testsPassed++;
+        console.log(`${COLOR_YELLOW}SKIP: Local manifest validation removed (assets served from Pages).${COLOR_RESET}`);
     }
 }
 
 function testFirmwareBinariesExist() {
+    const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
+    
+    if (fs.existsSync(boardsJsonPath)) {
+        console.log(`${COLOR_YELLOW}SKIP: Local firmware binaries not required; served from Pages.${COLOR_RESET}`);
+    }
+}
+ {
     const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
     
     if (fs.existsSync(boardsJsonPath)) {
@@ -462,6 +376,58 @@ function testStylesCssExists() {
     } else {
         console.log(`${COLOR_YELLOW}SKIP: styles.css not found${COLOR_RESET}`);
     }
+}
+
+function fetchHead(url) {
+    return new Promise((resolve, reject) => {
+        const req = https.request(url, { method: 'HEAD', timeout: 7000 }, (res) => {
+            resolve({ status: res.statusCode || 0 });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => {
+            req.destroy(new Error('Request timed out'));
+        });
+        req.end();
+    });
+}
+
+async function testRemoteAssetsAccessible() {
+    console.log('\n=== Test: Remote release assets on GitHub Pages ===');
+    const boardsJsonPath = path.join(__dirname, '..', 'distributor', 'firmware', 'boards.json');
+    if (!fs.existsSync(boardsJsonPath)) {
+        console.log(`${COLOR_RED}SKIP: boards.json not found${COLOR_RESET}`);
+        return;
+    }
+
+    const raw = fs.readFileSync(boardsJsonPath, 'utf8');
+    const boardsObj = JSON.parse(raw);
+    const boards = Array.isArray(boardsObj) ? boardsObj : boardsObj.boards || [];
+    assert(boards.length > 0, 'boards.json must list at least one board');
+
+    const tag = process.env.TEST_RELEASE_TAG || 'v0.6.3-alpha';
+    let failures = 0;
+
+    for (const board of boards) {
+        const base = `https://harpua555.github.io/centauri-carbon-motion-detector/releases/${tag}/${board.id}`;
+        const urls = [
+            `${base}-firmware_merged.bin`,
+            `${base}-firmware.bin`,
+            `${base}-littlefs.bin`
+        ];
+        for (const url of urls) {
+            try {
+                const res = await fetchHead(url);
+                assert(res.status === 200, `Expected 200 for ${url}, got ${res.status}`);
+            } catch (err) {
+                console.error(`${COLOR_RED}FAIL: ${url} unreachable (${err.message || err})${COLOR_RESET}`);
+                failures++;
+            }
+        }
+    }
+
+    assert(failures === 0, 'Some remote assets were not reachable on GitHub Pages');
+    console.log(`${COLOR_GREEN}PASS: Remote assets reachable for tag ${tag}${COLOR_RESET}`);
+    testsPassed++;
 }
 
 function testWebUIFaviconExists() {
@@ -555,6 +521,7 @@ function runAllTests() {
         testWebUILiteFiles();
         testLiteOTAJsStructure();
         testDevServerJs();
+        await testRemoteAssetsAccessible();
         
         // Additional comprehensive tests
         testFlasherJsStructure();
