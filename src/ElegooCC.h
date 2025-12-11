@@ -194,6 +194,19 @@ class ElegooCC
     unsigned long lastJamDetectorUpdateMs;
     bool          pauseTriggeredByRunout;
 
+    // Settings caching (for hot-path optimization)
+    struct CachedSettings {
+        bool testRecordingMode;
+        bool verboseLogging;
+        bool flowSummaryLogging;
+        bool pinDebugLogging;
+        float pulseReductionPercent;
+        float movementMmPerPulse;
+    };
+    CachedSettings cachedSettings;
+    JamConfig cachedJamConfig;
+    portMUX_TYPE cacheLock;
+
     // Command tracking
     unsigned long lastPauseRequestMs;
     unsigned long lastPrintEndMs;
@@ -216,6 +229,8 @@ class ElegooCC
     void handleCommandResponse(JsonDocument &doc);
     void handleStatus(JsonDocument &doc);
     void sendCommand(int command, bool waitForAck = false);
+    void refreshSettingsCache();
+    void refreshJamConfig();
 
     // Helpers for print start detection
     void clearPrintStartCandidate();
@@ -252,6 +267,8 @@ class ElegooCC
 
     void setup();
     void loop();
+
+    void refreshCaches();
 
     // Get current printer information
     printer_info_t getCurrentInformation();
