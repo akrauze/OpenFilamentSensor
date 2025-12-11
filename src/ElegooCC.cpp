@@ -891,10 +891,10 @@ void ElegooCC::connect()
 
 void ElegooCC::updateTransport(unsigned long currentTime)
 {
-    if (transport.ipAddress != settingsManager.getElegooIP())
-    {
-        connect();  // reconnect if configuration changed
-    }
+    // The IP address is set once at startup and only changes when the user
+    // manually updates settings. The WebSocket library's built-in reconnection
+    // mechanism (setReconnectInterval) handles automatic reconnection on disconnect,
+    // so there's no need to check for IP changes on every frame.
 
     if (transport.webSocket.isConnected())
     {
