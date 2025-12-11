@@ -147,6 +147,10 @@ ElegooCC::ElegooCC()
 
 void ElegooCC::setup()
 {
+    // Initialize settings and config caches
+    refreshSettingsCache();
+    refreshJamConfig();
+
     bool shouldConect = !settingsManager.isAPMode();
     if (shouldConect)
     {
@@ -697,6 +701,25 @@ void ElegooCC::sendCommand(int command, bool waitForAck)
     }
 }
 
+void ElegooCC::refreshSettingsCache()
+{
+    // Cache frequently-read settings from hot path to avoid repeated function calls
+    // This eliminates 6+ getter calls per main loop iteration (~1000 Hz)
+    cachedSettings.testRecordingMode = settingsManager.getTestRecordingMode();
+    cachedSettings.verboseLogging = settingsManager.getVerboseLogging();
+    cachedSettings.flowSummaryLogging = settingsManager.getFlowSummaryLogging();
+    cachedSettings.pinDebugLogging = settingsManager.getPinDebugLogging();
+    cachedSettings.pulseReductionPercent = settingsManager.getPulseReductionPercent();
+    cachedSettings.movementMmPerPulse = settingsManager.getMovementMmPerPulse();
+}
+
+void ElegooCC::refreshJamConfig()
+{
+    // Cache jam detection config instead of rebuilding every 250ms with 7 settings reads
+    // This reduces getter calls and validation checks in the jam detection hot path
+    cachedJamConfig = buildJamConfigFromSettings(settingsManager);
+}
+
 void ElegooCC::clearPrintStartCandidate()
 {
     printCandidateActive        = false;
@@ -1069,9 +1092,10 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     currentMovementValue = !currentMovementValue;  // Invert the logic if flag is set
 #endif
     // Test recording mode enables verbose flow logging for CSV extraction
-    bool testRecordingMode    = settingsManager.getTestRecordingMode();
-    bool debugFlow            = settingsManager.getVerboseLogging() || testRecordingMode;
-    bool summaryFlow          = settingsManager.getFlowSummaryLogging();
+    // Use cached settings to avoid repeated getter calls in hot path (~1000 Hz)
+    bool testRecordingMode    = cachedSettings.testRecordingMode;
+    bool debugFlow            = cachedSettings.verboseLogging || testRecordingMode;
+    bool summaryFlow          = cachedSettings.flowSummaryLogging;
     bool currentlyPrinting    = isPrinting();
 
     // Count pulses during any active print job (heating, leveling, printing, etc).
@@ -1099,7 +1123,8 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
           if (currentMovementValue == HIGH && lastMovementValue == LOW && shouldCountPulses)
           {
               // Apply pulse reduction filter for testing
-              float reductionPercent = settingsManager.getPulseReductionPercent();
+              // Use cached settings to avoid repeated getter calls in hot path
+              float reductionPercent = cachedSettings.pulseReductionPercent;
               if (!shouldApplyPulseReduction(reductionPercent)) {
                   // Even when skipping a pulse, update lastMovementValue so we don't repeatedly
                   // re-evaluate the same HIGH level as a new rising edge in subsequent loop ticks.
@@ -1108,7 +1133,7 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
                   return; // Skip this pulse due to reduction setting
               }
 
-              float movementMm = settingsManager.getMovementMmPerPulse();
+              float movementMm = cachedSettings.movementMmPerPulse;
               if (movementMm <= 0.0f)
               {
                 movementMm = 2.88f;  // Default sensor spec
@@ -1135,7 +1160,8 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
 
     // Pin debug logging (once per second) - BEFORE early return so it always runs
     // Shows RAW pin values (before any inversion)
-    bool pinDebug = settingsManager.getPinDebugLogging();
+    // Use cached settings to avoid repeated getter calls
+    bool pinDebug = cachedSettings.pinDebugLogging;
     if (pinDebug && (currentTime - lastPinDebugLogMs) >= 1000)
     {
         lastPinDebugLogMs = currentTime;
@@ -1160,7 +1186,9 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
         return;
     }
 
-    const JamConfig jamConfig = buildJamConfigFromSettings();
+    // Use cached jam config instead of rebuilding every time (~1000 Hz)
+    // This eliminates 7 settings reads + 4 validation checks every 250ms
+    const JamConfig& jamConfig = cachedJamConfig;
 
     // Get windowed distances from motion sensor
     float expectedDistance = motionSensor.getExpectedDistance();
