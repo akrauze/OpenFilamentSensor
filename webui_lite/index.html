@@ -824,6 +824,43 @@
             font-weight: 500;
         }
 
+        .version-banner {
+            background: var(--accent-gradient);
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            font-weight: 600;
+            box-shadow: var(--shadow-md);
+            display: none; /* Initially hidden */
+        }
+
+        .version-banner.hidden {
+            display: none;
+        }
+
+        .version-banner a {
+            color: white;
+            text-decoration: underline;
+            font-weight: 700;
+        }
+
+        .info-banner {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .info-banner span {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
         .modal-backdrop {
             position: fixed;
             inset: 0;
@@ -1017,6 +1054,10 @@
         </div>
     </header>
 
+    <div id="versionBanner" class="version-banner hidden">
+        A new version is available! <a href="#" onclick="switchPage('update')">Update now</a>
+    </div>
+
     <main class="container">
         <!-- Status Page -->
         <div id="status" class="page active">
@@ -1187,6 +1228,10 @@
 
         <!-- Update Page -->
         <div id="update" class="page">
+            <div class="info-banner">
+                <span>Looking to install the latest version? Use the web flasher to get the newest firmware.</span>
+                <a href="https://esptool.harpua555.dev" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Open Web Flasher</a>
+            </div>
             <div class="card">
                 <div class="card-header">
                     <span>Firmware Update</span>
@@ -1204,10 +1249,6 @@
                 <div class="progress-bar" id="progressBar">
                     <div class="progress-fill" id="progressFill">0%</div>
                 </div>
-
-                
-
-                
             </div>
         </div>
 
@@ -1320,7 +1361,7 @@
             default: 'Tap any status tile to learn more about that value.',
             printerConnected: 'Shows whether the ESP32 currently has a live SDCP connection to the printer. If disconnected, telemetry and pause commands cannot be sent.',
             filamentRunout: 'Indicates if the printer reported a filament runout event. When tripped, the tile counts down the delayed pause distance before the pause command is sent.',
-            filamentStopped: 'Tracks whether the motion sensor is detecting pulses. “Stopped” means no pulses within the tracking window, even if the printer is still requesting filament.',
+            filamentStopped: 'Tracks filament movement. "Moving" means pulses are being detected during a print. "Stopped" means no pulses are detected despite the printer requesting filament (potential jam). "Idle" means the printer is not printing.',
             movementPulses: 'Total pulses counted by the filament sensor since the current tracking session started. This increases as filament physically moves.',
             expectedFilament: 'Amount of filament (in millimeters) that the printer has requested within the active tracking window or job.',
             actualFilament: 'Amount of filament that physically moved through the sensor over the same period. Compare against expected to gauge flow health.',
@@ -1921,6 +1962,9 @@
                 resetJamHistory();
                 resetMetricSeries();
             }
+            if (!isPrinting && wasPrinting) {
+                checkFirmwareVersion();
+            }
             if (statusActive && isPrinting) {
                 maybeUpdateChart(
                     data.elegoo?.expectedFilament || 0,
@@ -1950,6 +1994,9 @@
                     ? 'Paused'
                     : (filamentRunout ? 'Runout' : 'Normal');
 
+                const filamentStatusText = filamentStopped ? 'Stopped' : (isPrinting ? 'Moving' : 'Idle');
+                const filamentStatusClass = filamentStopped ? 'warning' : (isPrinting ? 'active' : 'inactive');
+
                 grid.innerHTML = `
                     <div class="status-item" data-help-key="printerConnected">
                         <div class="status-label">Printer Connected</div>
@@ -1969,10 +2016,10 @@
                         </div>
                     </div>
                     <div class="status-item" data-help-key="filamentStopped">
-                        <div class="status-label">Filament Stopped</div>
+                        <div class="status-label">Filament Status</div>
                         <div class="status-value">
-                            <span class="status-badge ${filamentStopped ? 'warning' : 'active'} ${isPrinting ? '' : 'no-pulse'}">
-                                ${filamentStopped ? 'Stopped' : 'Normal'}
+                            <span class="status-badge ${filamentStatusClass} ${isPrinting ? '' : 'no-pulse'}">
+                                ${filamentStatusText}
                             </span>
                         </div>
                     </div>
@@ -2818,10 +2865,51 @@
 
                 document.getElementById('macAddress').textContent = statusData.mac || 'Unknown';
                 document.getElementById('ipAddress').textContent = statusData.ip || 'Unknown';
+                checkFirmwareVersion();
+                setInterval(checkFirmwareVersion, 3600000); // Check every hour
 
             } catch (error) {
                 console.error('Failed to load about info:', error);
             }
+        }
+
+        function checkFirmwareVersion() {
+            const currentVersion = document.getElementById('firmwareVersion').textContent;
+            if (!currentVersion || currentVersion === 'Loading...') {
+                return;
+            }
+
+            fetch('https://api.github.com/repos/harpua555/centauri-carbon-motion-detector/releases/latest')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`GitHub API request failed with status ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const latestVersion = data.tag_name;
+                    const banner = document.getElementById('versionBanner');
+
+                    // Version comparison logic
+                    const parse = v => v.replace(/^v/, '').split('.').map(Number);
+                    const [major, minor, build] = parse(currentVersion);
+                    const [latestMajor, latestMinor, latestBuild] = parse(latestVersion);
+
+                    if (latestMajor > major ||
+                       (latestMajor === major && latestMinor > minor) ||
+                       (latestMajor === major && latestMinor === minor && latestBuild > build)) {
+                        banner.classList.remove('hidden');
+                    } else {
+                        banner.classList.add('hidden');
+                    }
+                })
+                .catch(error => {
+                    console.warn('Firmware version check failed:', error.message);
+                    const banner = document.getElementById('versionBanner');
+                    if (banner) {
+                        banner.classList.add('hidden');
+                    }
+                });
         }
 
         // Format thumbprint from MMDDYYHHMMSS to MM.DD.YY-HH:MM
