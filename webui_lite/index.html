@@ -2891,7 +2891,7 @@
                     const banner = document.getElementById('versionBanner');
 
                     // Version comparison logic
-                    const parse = v => v.replace(/^v/, '').split('.').map(Number);
+                    const parse = v => v.replace(/^v/, '').split('-')[0].split('.').map(Number);
                     const [major, minor, build] = parse(currentVersion);
                     const [latestMajor, latestMinor, latestBuild] = parse(latestVersion);
 
