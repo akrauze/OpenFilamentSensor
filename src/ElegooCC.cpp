@@ -496,13 +496,30 @@ void ElegooCC::handleStatus(JsonDocument &doc)
             String newTaskId = printInfo["TaskId"].as<String>();
             if (!newTaskId.isEmpty())
             {
+                // Detect job transitions based on TaskId changes
+                if (lastTaskId.isEmpty())
+                {
+                    logger.logf("[JobID] NEW PRINT STARTED: TaskId='%s'", newTaskId.c_str());
+                }
+                else if (newTaskId != lastTaskId)
+                {
+                    logger.logf("[JobID] PRINT JOB CHANGED: '%s' -> '%s'",
+                                lastTaskId.c_str(), newTaskId.c_str());
+                }
+                // Same TaskId = would be a RESUME (no log needed here)
+
+                lastTaskId = newTaskId;
                 taskId = newTaskId;
             }
         }
-        else
+        else if (!lastTaskId.isEmpty())
         {
-            taskId = "";  // Clear if missing/null
+            // TaskId disappeared - job ended
+            logger.logf("[JobID] PRINT ENDED: TaskId='%s' no longer present", lastTaskId.c_str());
+            lastTaskId = "";
+            taskId = "";
         }
+        // No else - retain existing taskId/lastTaskId if field is just missing transiently
 
         if (printInfo.containsKey("Filename") && !printInfo["Filename"].isNull())
         {
@@ -512,10 +529,7 @@ void ElegooCC::handleStatus(JsonDocument &doc)
                 filename = newFilename;
             }
         }
-        else
-        {
-            filename = "";  // Clear if missing/null
-        }
+        // No else - retain existing filename if field is missing
 
         // Verbose logging for TaskId behavior observation
         if (settingsManager.getVerboseLogging())
