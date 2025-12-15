@@ -9,6 +9,9 @@
 #include "SDCPProtocol.h"
 #include "SettingsManager.h"
 
+// Define and initialize the static pulse counter
+volatile unsigned long ElegooCC::isrPulseCounter = 0;
+
 #define ACK_TIMEOUT_MS SDCPTiming::ACK_TIMEOUT_MS
 constexpr float        DEFAULT_FILAMENT_DEFICIT_THRESHOLD_MM = SDCPDefaults::FILAMENT_DEFICIT_THRESHOLD_MM;
 constexpr unsigned int EXPECTED_FILAMENT_SAMPLE_MS           = SDCPTiming::EXPECTED_FILAMENT_SAMPLE_MS;  // Log max once per second to prevent heap exhaustion
@@ -79,8 +82,14 @@ bool isRestPrintStatus(sdcp_print_status_t status)
 
 ElegooCC::ElegooCC()
 {
+    startedAt = 0;  // Initialize to prevent invalid grace periods
+
+    // Interrupt-driven pulse counter initialization
+    lastIsrPulseCount = 0;
+
+    // Legacy pin tracking (used only when tracking is frozen after jam pause)
+    lastMovementValue = -1;  // Initialize to invalid value
     lastChangeTime    = 0;
-    startedAt = 0;  // Initialize to prevent invalid grace periods    lastChangeTime    = 0;
 
     mainboardID       = "";
     printStatus       = SDCP_PRINT_STATUS_IDLE;
@@ -150,6 +159,15 @@ void ElegooCC::setup()
 {
     // Initialize settings and config caches
     refreshCaches();
+
+    // Set up GPIO interrupt for pulse detection on MOVEMENT_SENSOR_PIN
+    // Rising edge trigger: counts each time sensor goes LOW→HIGH
+    // IRAM_ATTR requirement handled by Arduino framework for static method
+    pinMode(MOVEMENT_SENSOR_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(MOVEMENT_SENSOR_PIN),
+                    ElegooCC::pulseCounterISR,
+                    RISING);
+    logger.logf("Pulse detection via GPIO%d interrupt enabled", MOVEMENT_SENSOR_PIN);
 
     bool shouldConect = !settingsManager.isAPMode();
     if (shouldConect)
@@ -987,31 +1005,28 @@ void ElegooCC::loop()
 
 bool ElegooCC::shouldApplyPulseReduction(float reductionPercent)
 {
-    static int pulseSkipCounter = 0;
+    static float accumulator = 0.0f;
 
     // 100% or higher: count all pulses (normal operation)
     if (reductionPercent >= 100.0f) {
-        pulseSkipCounter = 0;  // Reset counter for next time
+        accumulator = 0.0f;  // Reset accumulator for consistency
         return true;
     }
 
     // 0% or lower: count no pulses (simulate complete blockage)
     if (reductionPercent <= 0.0f) {
-        pulseSkipCounter = 0;  // Reset counter for next time
+        accumulator = 0.0f;  // Reset accumulator for consistency
         return false;
     }
 
-    // Calculate skip ratio: how many pulses to skip between counts
-    // For example: 50% -> skipRatio = 1 (skip 1, count 1), 20% -> skipRatio = 4 (skip 4, count 1)
-    int skipRatio = (int)((100.0f / reductionPercent) - 0.5f); // Round to nearest
-
-    if (pulseSkipCounter >= skipRatio) {
-        pulseSkipCounter = 0;
+    // Accumulator-based logic for fractional pulse counting
+    accumulator += reductionPercent;
+    if (accumulator >= 100.0f) {
+        accumulator -= 100.0f;
         return true;  // Count this pulse
-    } else {
-        pulseSkipCounter++;
-        return false; // Skip this pulse
     }
+
+    return false; // Skip this pulse
 }
 
 void ElegooCC::resetRunoutPauseState()
@@ -1121,6 +1136,9 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     // ============================================================================
     if (trackingFrozen)
     {
+        // Sync ISR counter to discard pulses accumulated while frozen
+        lastIsrPulseCount = ElegooCC::isrPulseCounter;
+
         // When tracking is frozen (printer paused after a jam), just track pin changes
         int currentMovementValue = digitalRead(MOVEMENT_SENSOR_PIN);
 #ifdef INVERT_MOVEMENT_PIN
@@ -1134,10 +1152,6 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
         return;
     }
 
-    int  currentMovementValue = digitalRead(MOVEMENT_SENSOR_PIN);
-#ifdef INVERT_MOVEMENT_PIN
-    currentMovementValue = !currentMovementValue;  // Invert the logic if flag is set
-#endif
     // Test recording mode enables verbose flow logging for CSV extraction
     // Use cached settings to avoid repeated getter calls in hot path (~1000 Hz)
     bool testRecordingMode = cachedSettings.testRecordingMode;
@@ -1146,7 +1160,7 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     bool currentlyPrinting = isPrinting();
 
     // ============================================================================
-    // PULSE COUNTING POLICY
+    // PULSE COUNTING POLICY (with INTERRUPT-DRIVEN DETECTION)
     // Count pulses during any active print job (heating, leveling, printing, etc).
     // Uses isPrintJobActive() which returns true when:
     //   printStatus != IDLE && printStatus != STOPPED && printStatus != COMPLETE
@@ -1155,43 +1169,39 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     // (step 6), matching the lifecycle managed by candidate detection logic.
     //
     // The trackingFrozen gate (handled above) stops counting during jam-paused state.
+    //
+    // INTERRUPT-DRIVEN: Pulses are now detected via GPIO interrupt on rising edge.
+    // The ISR increments isrPulseCounter. We read and process accumulated pulses here.
+    // This guarantees NO pulses are missed, even during loop stalls or high-speed extrusion.
     // ============================================================================
     bool shouldCountPulses = isPrintJobActive();
 
-    // DIAGNOSTIC: Detect when machine status race condition would have prevented pulse counting
-    // This helps validate that the fix is working (logs when we avoid the old race condition)
-    if (shouldCountPulses && !hasMachineStatus(SDCP_MACHINE_STATUS_PRINTING))
-    {
-        static unsigned long lastRaceDetectionMs = 0;
-        if ((currentTime - lastRaceDetectionMs) >= 5000)  // Log max once per 5 seconds
-        {
-            lastRaceDetectionMs = currentTime;
-            logger.log("Pulse counting protected: PRINTING status missing from machine state (old code would drop pulses)");
-        }
-    }
+    // ============================================================================
+    // READ ACCUMULATED PULSES FROM ISR COUNTER
+    // ============================================================================
+    unsigned long currentPulseCount = ElegooCC::isrPulseCounter;
+    unsigned long newPulses = currentPulseCount - lastIsrPulseCount;
+    lastIsrPulseCount = currentPulseCount;
 
-    // Track movement pulses - only count RISING edge (LOW to HIGH transition)
-    // This matches typical sensor specs where 2.88mm = one complete pulse cycle
-    if (currentMovementValue != lastMovementValue)
+    // Process accumulated pulses
+    if (newPulses > 0 && shouldCountPulses)
     {
-        // Only trigger on RISING edge (LOW->HIGH, 0->1)
-        if (currentMovementValue == HIGH && lastMovementValue == LOW && shouldCountPulses)
+        float movementMm = cachedSettings.movementMmPerPulse;
+        if (movementMm <= 0.0f)
         {
-              // Apply pulse reduction filter for testing
+            movementMm = 2.88f;  // Default sensor spec
+        }
+
+        // Process each pulse through reduction filter (for test recording mode)
+        for (unsigned long i = 0; i < newPulses; i++)
+        {
+            // Apply pulse reduction filter for testing
             // Use cached settings to avoid repeated getter calls in hot path
             float reductionPercent = cachedSettings.pulseReductionPercent;
-            if (!shouldApplyPulseReduction(reductionPercent)) {
-                // Even when skipping a pulse, update lastMovementValue so we don't repeatedly
-                // re-evaluate the same HIGH level as a new rising edge in subsequent loop ticks.
-                lastMovementValue = currentMovementValue;
-                lastChangeTime    = currentTime;
-                return; // Skip this pulse due to reduction setting (test feature)
-            }
-
-            float movementMm = cachedSettings.movementMmPerPulse;
-            if (movementMm <= 0.0f)
+            if (!shouldApplyPulseReduction(reductionPercent))
             {
-                movementMm = 2.88f;  // Default sensor spec
+                // Skip this pulse due to reduction setting (test feature)
+                continue;
             }
 
             // Add pulse to motion sensor (Klipper-style)
@@ -1206,8 +1216,7 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
             }
         }
 
-        lastMovementValue = currentMovementValue;
-        lastChangeTime    = currentTime;
+        lastChangeTime = currentTime;
     }
 
     // Pin debug logging (once per second) - BEFORE early return so it always runs
@@ -1509,4 +1518,21 @@ bool ElegooCC::discoverPrinterIP(String &outIp, unsigned long timeoutMs)
 
     udp.stop();
     return false;
+}
+
+// ============================================================================
+// INTERRUPT SERVICE ROUTINE FOR PULSE COUNTING
+// ============================================================================
+// Static interrupt handler that increments the pulse counter on rising edge.
+// This replaces polling-based edge detection and guarantees no pulses are dropped,
+// even during loop stalls or high-speed extrusion.
+//
+// Called by GPIO interrupt on MOVEMENT_SENSOR_PIN rising edge.
+// Execution time: ~2-3 microseconds (very fast, safe for ISR).
+// ============================================================================
+void IRAM_ATTR ElegooCC::pulseCounterISR()
+{
+    // Directly increment the static counter. This is safe to do from an ISR
+    // as it involves no flash-based code.
+    ElegooCC::isrPulseCounter++;
 }

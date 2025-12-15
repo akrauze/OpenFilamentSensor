@@ -130,7 +130,11 @@ class ElegooCC
     TransportState        transport;
     UUID                  uuid;
     StaticJsonDocument<1200> messageDoc;
-    // Variables to track movement sensor state
+
+    // Interrupt-driven pulse counter (replaces polling-based edge detection)
+    unsigned long lastIsrPulseCount;            // Last value read in main loop
+
+    // Legacy pin tracking (used only when tracking is frozen after jam pause)
     int           lastMovementValue;  // Initialize to invalid value
     unsigned long lastChangeTime;
 
@@ -191,9 +195,15 @@ class ElegooCC
     
     // Jam detector state caching (for throttled updates)
     JamState      cachedJamState;
+    // command to the printer when it is detected.
     unsigned long lastJamDetectorUpdateMs;
     bool          pauseTriggeredByRunout;
 
+   public:
+    // Public static counter for the ISR to access safely
+    static volatile unsigned long isrPulseCounter;
+
+   private:
     // Settings caching (for hot-path optimization)
     struct CachedSettings {
         bool testRecordingMode;
@@ -264,6 +274,9 @@ class ElegooCC
    public:
     // Singleton access method
     static ElegooCC &getInstance();
+
+    // Interrupt handler for pulse detection (static, attached to GPIO interrupt)
+    static void IRAM_ATTR pulseCounterISR();
 
     void setup();
     void loop();
