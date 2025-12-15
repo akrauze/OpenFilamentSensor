@@ -1005,31 +1005,28 @@ void ElegooCC::loop()
 
 bool ElegooCC::shouldApplyPulseReduction(float reductionPercent)
 {
-    static int pulseSkipCounter = 0;
+    static float accumulator = 0.0f;
 
     // 100% or higher: count all pulses (normal operation)
     if (reductionPercent >= 100.0f) {
-        pulseSkipCounter = 0;  // Reset counter for next time
+        accumulator = 0.0f;  // Reset accumulator for consistency
         return true;
     }
 
     // 0% or lower: count no pulses (simulate complete blockage)
     if (reductionPercent <= 0.0f) {
-        pulseSkipCounter = 0;  // Reset counter for next time
+        accumulator = 0.0f;  // Reset accumulator for consistency
         return false;
     }
 
-    // Calculate skip ratio: how many pulses to skip between counts
-    // For example: 50% -> skipRatio = 1 (skip 1, count 1), 20% -> skipRatio = 4 (skip 4, count 1)
-    int skipRatio = (int)((100.0f / reductionPercent) - 0.5f); // Round to nearest
-
-    if (pulseSkipCounter >= skipRatio) {
-        pulseSkipCounter = 0;
+    // Accumulator-based logic for fractional pulse counting
+    accumulator += reductionPercent;
+    if (accumulator >= 100.0f) {
+        accumulator -= 100.0f;
         return true;  // Count this pulse
-    } else {
-        pulseSkipCounter++;
-        return false; // Skip this pulse
     }
+
+    return false; // Skip this pulse
 }
 
 void ElegooCC::resetRunoutPauseState()
