@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BigTreeTech Filament Motion Sensor</title>
+    <title>OpenFilamentSensor</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
@@ -508,6 +508,14 @@
 
         .status-badge.warning::before {
             background: var(--bg-primary);
+        }
+
+        .status-badge.error {
+            background: linear-gradient(135deg, var(--error), #d23a31);
+        }
+
+        .status-badge.error::before {
+            background: #fff;
         }
 
         .chart-container {
@@ -1035,11 +1043,11 @@
                 <div class="branding">
                     <div class="logo-container"></div>
                     <div class="title-container">
-                        <h1>BigTreeTech Filament Motion Sensor</h1>
+                        <h1>OpenFilamentSensor</h1>
                         <div class="powered-by">
                             powered by
                             <span class="opencenauri-logo"></span>
-                            <strong>OpenCentauri (v0.3.0 or later)</strong>
+                            <strong>OpenCentauri (v0.3.0 or later) and BigTreeTech SFS2.0</strong>
                         </div>
                     </div>
                 </div>
@@ -1056,7 +1064,7 @@
     </header>
 
     <div id="versionBanner" class="version-banner hidden">
-        A new version is available! <a href="#" onclick="switchPage('update')">Update now</a>
+        A new version is available! <a href="https://ofs.harpua555.dev" target="_blank" rel="noopener noreferrer">Update now</a>
     </div>
 
     <main class="container">
@@ -1231,7 +1239,7 @@
         <div id="update" class="page">
             <div class="info-banner">
                 <span>Looking to install the latest version? Use the web flasher to get the newest firmware.</span>
-                <a href="https://esptool.harpua555.dev" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Open Web Flasher</a>
+                <a href="https://ofs.harpua555.dev" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Open Web Flasher</a>
             </div>
             <div class="card">
                 <div class="card-header">
@@ -1262,7 +1270,7 @@
 
                 <h3 style="color: var(--accent-primary); margin-bottom: 16px;">Firmware</h3>
                 <div class="info-row">
-                    <span class="info-label">Version</span>
+                    <span class="info-label">Project Status</span>
                     <span class="info-value" id="firmwareVersion">Loading...</span>
                 </div>
                 <div class="info-row">
@@ -1274,7 +1282,7 @@
                     <span class="info-value" id="filesystemThumbprint" style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Build</span>
+                    <span class="info-label">Version</span>
                     <span class="info-value" id="buildVersion" style="font-family: 'Consolas', monospace;">Loading...</span>
                 </div>
 
@@ -1994,7 +2002,7 @@
                     : (filamentRunout ? 'warning' : 'active');
                 const runoutBadgeLabel = runoutPauseCommanded
                     ? 'Paused'
-                    : (filamentRunout ? 'Runout' : 'Normal');
+                    : (filamentRunout ? 'Runout' : 'Present');
 
                 const filamentStatusText = filamentStopped ? 'Stopped' : (isPrinting ? 'Moving' : 'Idle');
                 const filamentStatusClass = filamentStopped ? 'warning' : (isPrinting ? 'active' : 'inactive');
@@ -2003,7 +2011,7 @@
                     <div class="status-item" data-help-key="printerConnected">
                         <div class="status-label">Printer Connected</div>
                         <div class="status-value">
-                            <span class="status-badge ${printerConnected ? 'active' : 'inactive'} no-pulse">
+                            <span class="status-badge ${printerConnected ? 'active' : 'warning'} no-pulse">
                                 ${printerConnected ? 'Connected' : 'Disconnected'}
                             </span>
                         </div>
@@ -2877,7 +2885,8 @@
         }
 
         async function checkFirmwareVersion() {
-            const currentVersionText = document.getElementById('firmwareVersion').textContent;
+            const buildVersionEl = document.getElementById('buildVersion');
+            const currentVersionText = buildVersionEl ? buildVersionEl.textContent : null;
             if (!currentVersionText || currentVersionText === 'Loading...') {
                 return;
             }
@@ -2893,7 +2902,7 @@
             };
 
             try {
-                const response = await fetch('https://api.github.com/repos/harpua555/centauri-carbon-motion-detector/releases/latest', { signal: controller.signal });
+                const response = await fetch('https://api.github.com/repos/harpua555/OpenFilamentSensor/releases/latest', { signal: controller.signal });
 
                 if (!response.ok) {
                     throw new Error(`GitHub API request failed with status ${response.status}`);
