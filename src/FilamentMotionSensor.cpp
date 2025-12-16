@@ -154,7 +154,7 @@ void FilamentMotionSensor::sumWindow(float &outExpected, float &outActual)
     outActual   = 0.0f;
     
     unsigned long now = millis();
-    unsigned long cutoff = now - WINDOW_SIZE_MS;
+    unsigned long cutoff = (now < WINDOW_SIZE_MS) ? 0 : (now - WINDOW_SIZE_MS);
     
     // Iterate all buckets
     for (int i = 0; i < BUCKET_COUNT; i++)
