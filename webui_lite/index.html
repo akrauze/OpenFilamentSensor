@@ -1064,7 +1064,7 @@
     </header>
 
     <div id="versionBanner" class="version-banner hidden">
-        A new version is available! <a href="#" onclick="switchPage('update')">Update now</a>
+        A new version is available! <a href="https://ofs.harpua555.dev" target="_blank" rel="noopener noreferrer">Update now</a>
     </div>
 
     <main class="container">
@@ -2885,7 +2885,8 @@
         }
 
         async function checkFirmwareVersion() {
-            const currentVersionText = document.getElementById('firmwareVersion').textContent;
+            const buildVersionEl = document.getElementById('buildVersion');
+            const currentVersionText = buildVersionEl ? buildVersionEl.textContent : null;
             if (!currentVersionText || currentVersionText === 'Loading...') {
                 return;
             }
