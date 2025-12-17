@@ -9,6 +9,8 @@
 #include "SDCPProtocol.h"
 #include "SettingsManager.h"
 
+#include <vector>
+
 // Define and initialize the static pulse counter
 volatile unsigned long ElegooCC::isrPulseCounter = 0;
 
