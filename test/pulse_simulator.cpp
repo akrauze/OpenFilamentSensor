@@ -103,9 +103,9 @@ const int HARD_JAM_TIME_MS = TEST_HARD_JAM_TIME_MS;
 #endif
 const int GRACE_PERIOD_MS = TEST_GRACE_PERIOD_MS;
 
-// Tracking window is hardcoded in FilamentMotionSensor (5000ms with 250ms buckets)
-// This value is only used for test iteration calculations
-const int TRACKING_WINDOW_MS = 3000;
+// Tracking window matches FilamentMotionSensor::WINDOW_SIZE_MS (5000ms with 250ms buckets)
+// Used to calculate test iterations needed to fill the sliding window before jam detection
+const int TRACKING_WINDOW_MS = 5000;
 
 #ifndef TEST_RESUME_GRACE_MIN_MOVEMENT_MM
 #define TEST_RESUME_GRACE_MIN_MOVEMENT_MM 1.0f
