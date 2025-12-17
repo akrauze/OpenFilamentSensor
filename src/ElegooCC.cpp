@@ -1002,6 +1002,13 @@ void ElegooCC::connect()
 
 void ElegooCC::updateTransport(unsigned long currentTime)
 {
+    // Suspend WebSocket during discovery to prevent stalling the loop
+    // if the configured IP is unreachable (blocking connect logic in WebSocketsClient)
+    if (discoveryState.active)
+    {
+        return;
+    }
+
     // The IP address is set once at startup and only changes when the user
     // manually updates settings. The WebSocket library's built-in reconnection
     // mechanism (setReconnectInterval) handles automatic reconnection on disconnect,
@@ -1050,6 +1057,7 @@ void ElegooCC::loop()
     }
 
     maybeRequestStatus(currentTime);
+    updateDiscovery(currentTime);
 }
 
 bool ElegooCC::shouldApplyPulseReduction(float reductionPercent)
@@ -1588,6 +1596,145 @@ bool ElegooCC::discoverPrinters(std::vector<DiscoveryResult> &results, unsigned 
 
     udp.stop();
     return !results.empty();
+}
+
+bool ElegooCC::startDiscoveryAsync(unsigned long timeoutMs, DiscoveryCallback callback)
+{
+    if (discoveryState.active)
+    {
+        logger.log("Discovery already in progress");
+        return false;
+    }
+
+    if (!discoveryState.udp.begin(SDCP_DISCOVERY_PORT))
+    {
+        logger.log("Failed to open UDP socket for discovery");
+        return false;
+    }
+
+    // Broadcast discovery packet
+    IPAddress localIp   = WiFi.localIP();
+    IPAddress subnet    = WiFi.subnetMask();
+    IPAddress broadcastIp((localIp[0] & subnet[0]) | ~subnet[0],
+                          (localIp[1] & subnet[1]) | ~subnet[1],
+                          (localIp[2] & subnet[2]) | ~subnet[2],
+                          (localIp[3] & subnet[3]) | ~subnet[3]);
+
+    logger.logf("Starting async discovery probe to %s (timeout: %lums)", 
+                broadcastIp.toString().c_str(), timeoutMs);
+
+    discoveryState.udp.beginPacket(broadcastIp, SDCP_DISCOVERY_PORT);
+    discoveryState.udp.write(reinterpret_cast<const uint8_t *>("M99999"), 6);
+    discoveryState.udp.endPacket();
+
+    discoveryState.active    = true;
+    discoveryState.startTime = millis();
+    discoveryState.lastProbeTime = discoveryState.startTime;
+    discoveryState.timeoutMs = timeoutMs;
+    discoveryState.callback  = callback;
+    discoveryState.seenIps.clear();
+    discoveryState.results.clear();
+
+    return true;
+}
+
+void ElegooCC::cancelDiscovery()
+{
+    if (discoveryState.active)
+    {
+        discoveryState.udp.stop();
+        discoveryState.active = false;
+        logger.log("Async discovery cancelled");
+    }
+}
+
+void ElegooCC::updateDiscovery(unsigned long currentTime)
+{
+    if (!discoveryState.active)
+    {
+        return;
+    }
+
+    // Check for timeout
+    if ((currentTime - discoveryState.startTime) >= discoveryState.timeoutMs)
+    {
+        logger.logf("Async discovery complete. Found %d printers.", discoveryState.results.size());
+        
+        // Stop UDP first
+        discoveryState.udp.stop();
+        discoveryState.active = false;
+
+        // Invoke callback with results
+        if (discoveryState.callback)
+        {
+            discoveryState.callback(discoveryState.results);
+        }
+        return;
+    }
+
+    // periodic re-broadcast (every 1.5s) to ensure reliability
+    if ((currentTime - discoveryState.lastProbeTime) > 1500)
+    {
+         IPAddress localIp   = WiFi.localIP();
+         IPAddress subnet    = WiFi.subnetMask();
+         IPAddress broadcastIp((localIp[0] & subnet[0]) | ~subnet[0],
+                               (localIp[1] & subnet[1]) | ~subnet[1],
+                               (localIp[2] & subnet[2]) | ~subnet[2],
+                               (localIp[3] & subnet[3]) | ~subnet[3]);
+         
+         logger.log("Re-sending discovery probe...");
+         discoveryState.udp.beginPacket(broadcastIp, SDCP_DISCOVERY_PORT);
+         discoveryState.udp.write(reinterpret_cast<const uint8_t *>("M99999"), 6);
+         discoveryState.udp.endPacket();
+
+         discoveryState.lastProbeTime = currentTime;
+    }
+
+    // Process all available packets
+    int packetSize;
+    while ((packetSize = discoveryState.udp.parsePacket()) > 0)
+    {
+        IPAddress remoteIp = discoveryState.udp.remoteIP();
+        if (remoteIp)
+        {
+            String ipStr = remoteIp.toString();
+            
+            // Check for duplicate
+            bool duplicate = false;
+            for (const auto& seen : discoveryState.seenIps) {
+                if (seen == ipStr) {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            // Log every packet we see to debug "missing" printers
+            logger.logf("Discovery packet from %s (dup=%d)", ipStr.c_str(), duplicate);
+
+            if (!duplicate) {
+                discoveryState.seenIps.push_back(ipStr);
+                
+                String payload = "";
+                char buffer[128];
+                int  len = discoveryState.udp.read(buffer, sizeof(buffer) - 1);
+                if (len > 0)
+                {
+                    buffer[len] = '\0';
+                    payload = String(buffer);
+                    logger.logf("Discovery payload: %s", buffer);
+                }
+                else
+                {
+                    logger.logf("Discovery payload empty");
+                }
+
+                discoveryState.results.push_back({ipStr, payload});
+            } else {
+                 // CRITICAL: Always drain the packet even if duplicate!
+                 discoveryState.udp.flush();
+            }
+        }
+    }
 }
 
 // ============================================================================

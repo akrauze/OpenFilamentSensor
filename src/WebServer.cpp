@@ -238,32 +238,69 @@ void WebServer::begin()
     server.on(kRouteDiscoverPrinter, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
-                  std::vector<ElegooCC::DiscoveryResult> results;
-                  // Use a 7s timeout for discovery via the ElegooCC helper.
-                  if (!elegooCC.discoverPrinters(results, 7000))
-                  {
-                      DynamicJsonDocument jsonDoc(128);
-                      jsonDoc["printers"] = JsonArray(); // Empty array
-                      String jsonResponse;
-                      serializeJson(jsonDoc, jsonResponse);
-                      // Return 200 even if empty, front-end handles it
-                      request->send(200, "application/json", jsonResponse);
-                      return;
+                  // Start discovery if not active
+                  if (!elegooCC.isDiscoveryActive()) {
+                       elegooCC.startDiscoveryAsync(7000, nullptr);
                   }
-
-                  // 256 bytes per printer should be plenty
-                  DynamicJsonDocument jsonDoc(256 * results.size() + 128);
-                  JsonArray printers = jsonDoc.createNestedArray("printers");
                   
-                  for (const auto& res : results) {
-                      JsonObject p = printers.createNestedObject();
-                      p["ip"] = res.ip;
-                      p["payload"] = res.payload;
-                  }
+                  // Use shared state for the chunked response callback
+                  struct DiscoveryState {
+                      bool finished = false;
+                      String cursor = "";
+                      String json = "";
+                  };
+                  auto state = std::make_shared<DiscoveryState>();
+                  
+                  AsyncWebServerResponse *response = request->beginChunkedResponse("application/json",
+                      [state](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+                          // 1. Send pending data (JSON result)
+                          if (state->finished) {
+                              if (state->cursor.length() > 0) {
+                                  size_t toSend = min(maxLen, state->cursor.length());
+                                  memcpy(buffer, state->cursor.c_str(), toSend);
+                                  state->cursor = state->cursor.substring(toSend);
+                                  return toSend;
+                              }
+                              return 0; // EOF - closes the response
+                          }
 
-                  String jsonResponse;
-                  serializeJson(jsonDoc, jsonResponse);
-                  request->send(200, "application/json", jsonResponse);
+                          // 2. Check discovery status
+                          if (!elegooCC.isDiscoveryActive()) {
+                               state->finished = true;
+                               
+                               // Build JSON result
+                               std::vector<ElegooCC::DiscoveryResult> results = elegooCC.getDiscoveryResults();
+                               // Pre-allocate to ensure we don't fragment heap too much
+                               DynamicJsonDocument jsonDoc(1024);
+                               JsonArray printers = jsonDoc.createNestedArray("printers");
+                               for (const auto& res : results) {
+                                    JsonObject p = printers.createNestedObject();
+                                    p["ip"] = res.ip;
+                                    p["payload"] = res.payload;
+                               }
+                               serializeJson(jsonDoc, state->json);
+                               state->cursor = state->json;
+                               
+                               // Send as much as we can right now
+                               size_t toSend = min(maxLen, state->cursor.length());
+                               memcpy(buffer, state->cursor.c_str(), toSend);
+                               state->cursor = state->cursor.substring(toSend);
+                               return toSend;
+                          }
+
+                          // 3. Keepalive (Wait Phase)
+                          // We must return data to keep the connection alive and chunked stream open.
+                          // Sending a space is harmless for JSON.
+                          if (maxLen > 0) {
+                              buffer[0] = ' ';
+                              return 1;
+                          }
+                          
+                          return 0;
+                      });
+                  
+                  // CRITICAL: Must register the response object with the request
+                  request->send(response);
               });
 
     // Setup ElegantOTA

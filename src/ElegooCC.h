@@ -297,7 +297,31 @@ class ElegooCC
         String ip;
         String payload;
     };
+    
+    // Async discovery
+    typedef std::function<void(const std::vector<DiscoveryResult>&)> DiscoveryCallback;
+    bool startDiscoveryAsync(unsigned long timeoutMs, DiscoveryCallback callback);
+    void cancelDiscovery();
+    void updateDiscovery(unsigned long currentTime);
+    
+    // Accessors for async response handling
+    bool isDiscoveryActive() const { return discoveryState.active; }
+    std::vector<DiscoveryResult> getDiscoveryResults() const { return discoveryState.results; }
+
+    // Legacy synchronous discovery (deprecated/blocking)
     bool discoverPrinters(std::vector<DiscoveryResult> &results, unsigned long timeoutMs = 3000);
+
+   private:
+    struct DiscoveryState {
+        bool active = false;
+        unsigned long startTime = 0;
+        unsigned long timeoutMs = 0;
+        unsigned long lastProbeTime = 0;
+        WiFiUDP udp;
+        std::vector<String> seenIps;
+        std::vector<DiscoveryResult> results;
+        DiscoveryCallback callback;
+    } discoveryState;
 };
 
 // Convenience macro for easier access
