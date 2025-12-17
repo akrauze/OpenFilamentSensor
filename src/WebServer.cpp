@@ -238,25 +238,29 @@ void WebServer::begin()
     server.on(kRouteDiscoverPrinter, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
-                  String ip;
-                  // Use a 3s timeout for discovery via the ElegooCC helper.
-                  if (!elegooCC.discoverPrinterIP(ip, 3000))
+                  std::vector<ElegooCC::DiscoveryResult> results;
+                  // Use a 7s timeout for discovery via the ElegooCC helper.
+                  if (!elegooCC.discoverPrinters(results, 7000))
                   {
                       DynamicJsonDocument jsonDoc(128);
-                      jsonDoc["error"] = "No printer found";
+                      jsonDoc["printers"] = JsonArray(); // Empty array
                       String jsonResponse;
                       serializeJson(jsonDoc, jsonResponse);
-                      request->send(504, "application/json", jsonResponse);
+                      // Return 200 even if empty, front-end handles it
+                      request->send(200, "application/json", jsonResponse);
                       return;
                   }
 
-                  settingsManager.setElegooIP(ip);
-                  settingsManager.save(true);
-                  elegooCC.refreshCaches();
-                  elegooCC.reconnect();  // Reconnect with the newly discovered IP
+                  // 256 bytes per printer should be plenty
+                  DynamicJsonDocument jsonDoc(256 * results.size() + 128);
+                  JsonArray printers = jsonDoc.createNestedArray("printers");
+                  
+                  for (const auto& res : results) {
+                      JsonObject p = printers.createNestedObject();
+                      p["ip"] = res.ip;
+                      p["payload"] = res.payload;
+                  }
 
-                  DynamicJsonDocument jsonDoc(128);
-                  jsonDoc["elegooip"] = ip;
                   String jsonResponse;
                   serializeJson(jsonDoc, jsonResponse);
                   request->send(200, "application/json", jsonResponse);

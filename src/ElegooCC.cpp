@@ -1509,7 +1509,7 @@ printer_info_t ElegooCC::getCurrentInformation()
     return info;
 }
 
-bool ElegooCC::discoverPrinterIP(String &outIp, unsigned long timeoutMs)
+bool ElegooCC::discoverPrinters(std::vector<DiscoveryResult> &results, unsigned long timeoutMs)
 {
     WiFiUDP udp;
     if (!udp.begin(SDCP_DISCOVERY_PORT))
@@ -1533,6 +1533,10 @@ bool ElegooCC::discoverPrinterIP(String &outIp, unsigned long timeoutMs)
     udp.write(reinterpret_cast<const uint8_t *>("M99999"), 6);
     udp.endPacket();
 
+    // Set to track unique IPs
+    std::vector<String> seenIps;
+    results.clear();
+
     unsigned long start = millis();
     while ((millis() - start) < timeoutMs)
     {
@@ -1542,31 +1546,46 @@ bool ElegooCC::discoverPrinterIP(String &outIp, unsigned long timeoutMs)
             IPAddress remoteIp = udp.remoteIP();
             if (remoteIp)
             {
-                // Optional: read and log the payload for debugging
-                char buffer[128];
-                int  len = udp.read(buffer, sizeof(buffer) - 1);
-                if (len > 0)
-                {
-                    buffer[len] = '\0';
-                    logger.logf("Discovery reply from %s: %s", remoteIp.toString().c_str(),
-                                buffer);
-                }
-                else
-                {
-                    logger.logf("Discovery reply from %s (no payload)",
-                                remoteIp.toString().c_str());
+                String ipStr = remoteIp.toString();
+                
+                // Check for duplicate
+                bool duplicate = false;
+                for (const auto& seen : seenIps) {
+                    if (seen == ipStr) {
+                        duplicate = true;
+                        break;
+                    }
                 }
 
-                outIp = remoteIp.toString();
-                udp.stop();
-                return true;
+                if (!duplicate) {
+                    seenIps.push_back(ipStr);
+                    
+                    String payload = "";
+                    char buffer[128];
+                    int  len = udp.read(buffer, sizeof(buffer) - 1);
+                    if (len > 0)
+                    {
+                        buffer[len] = '\0';
+                        payload = String(buffer);
+                        logger.logf("Discovery reply from %s: %s", ipStr.c_str(), buffer);
+                    }
+                    else
+                    {
+                        logger.logf("Discovery reply from %s (no payload)", ipStr.c_str());
+                    }
+
+                    results.push_back({ipStr, payload});
+                } else {
+                     // Drain the packet if it's a duplicate
+                     udp.flush();
+                }
             }
         }
         delay(10);
     }
 
     udp.stop();
-    return false;
+    return !results.empty();
 }
 
 // ============================================================================

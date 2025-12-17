@@ -291,8 +291,12 @@ class ElegooCC
 
     // Get current printer information
     printer_info_t getCurrentInformation();
-
-    bool discoverPrinterIP(String &outIp, unsigned long timeoutMs = 3000);
+    // Discovery
+    struct DiscoveryResult {
+        String ip;
+        String payload;
+    };
+    bool discoverPrinters(std::vector<DiscoveryResult> &results, unsigned long timeoutMs = 3000);
 };
 
 // Convenience macro for easier access

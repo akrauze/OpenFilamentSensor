@@ -1066,6 +1066,20 @@
         </div>
     </div>
 
+    <!-- Printer Discovery Selection Modal -->
+    <div id="discoveryModal" class="modal-backdrop">
+        <div class="modal-card" style="max-width: 600px;">
+            <h3>Select Printer</h3>
+            <p>Multiple printers found. Please select one:</p>
+            <div id="printerList" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;">
+                <!-- Populated by JS -->
+            </div>
+            <div class="btn-group" style="justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="closeDiscoveryModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <header>
         <div class="container">
             <div class="header-content">
@@ -2644,18 +2658,76 @@
 
         async function discoverPrinter() {
             try {
-                showToast('Discovering printer...', 'info');
+                showToast('Discovering printers...', 'info');
                 const response = await fetch('/discover_printer');
                 const data = await response.json();
 
-                if (data.elegooip) {
-                    document.getElementById('elegooip').value = data.elegooip;
+                if (data.printers && data.printers.length > 0) {
+                    if (data.printers.length === 1) {
+                         // Only one printer, select it automatically but let user confirm via the form
+                         selectPrinter(data.printers[0].ip);
+                         showToast(`Printer found at ${data.printers[0].ip}`, 'success');
+                    } else {
+                        // Multiple printers, show modal
+                        showDiscoveryModal(data.printers);
+                    }
+                } else if (data.elegooip) {
+                    // Backwards compatibility if backend returns old format (unlikely but safe)
+                    selectPrinter(data.elegooip);
                     showToast(`Printer found at ${data.elegooip}`, 'success');
                 } else {
-                    showToast('No printer found on network', 'error');
+                    showToast('No printers found on network', 'error');
                 }
             } catch (error) {
                 showToast('Discovery failed: ' + error.message, 'error');
+            }
+        }
+
+        function showDiscoveryModal(printers) {
+            const modal = document.getElementById('discoveryModal');
+            const list = document.getElementById('printerList');
+            if (!modal || !list) return;
+
+            list.innerHTML = '';
+            printers.forEach(printer => {
+                const isProxy = printer.payload && printer.payload.includes("Proxy"); // Example proxy detection if payload varies
+                
+                const item = document.createElement('div');
+                item.className = 'status-item'; // Reuse status-item styling for card-like look
+                item.style.padding = '15px';
+                item.style.cursor = 'pointer';
+                item.onclick = () => {
+                    selectPrinter(printer.ip);
+                    closeDiscoveryModal();
+                };
+
+                let infoHtml = `<div style="font-weight: bold; font-size: 1.1rem; color: var(--text-primary);">${escapeHtml(printer.ip)}</div>`;
+                
+                if (printer.payload) {
+                    infoHtml += `<div style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 4px;">Payload: ${escapeHtml(printer.payload)}</div>`;
+                }
+                
+                // If we had logic to detect proxies, we could add a badge here
+                // For now, we just show the payload as requested
+                
+                item.innerHTML = infoHtml;
+                list.appendChild(item);
+            });
+
+            modal.classList.add('active');
+        }
+
+        function closeDiscoveryModal() {
+            const modal = document.getElementById('discoveryModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function selectPrinter(ip) {
+            const input = document.getElementById('elegooip');
+            if (input) {
+                input.value = ip;
+                updateSettingsDirtyState(); // Trigger dirty state to prompt save
+                showToast(`Selected ${ip}. Don't forget to Save Settings!`, 'info');
             }
         }
 
