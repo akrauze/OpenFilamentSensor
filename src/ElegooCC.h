@@ -9,6 +9,7 @@
 #include "JamDetector.h"
 //#include "JamDetector_iface.h"
 #include "UUID.h"
+#include <vector>
 
 #define CARBON_CENTAURI_PORT 3030
 
