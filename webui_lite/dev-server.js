@@ -7,23 +7,84 @@
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = 5174;
 
 // Middleware
 app.use(express.json());
+
+// Explicitly serve index.html for root route
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Static files
 app.use(express.static(__dirname));
 
-// Mock sensor status
+// Mock SSE status events endpoint (required by full UI)
+app.get('/status_events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const sendEvent = () => {
+        const isPrinting = Math.random() > 0.3;
+        const expectedFilament = Math.random() * 500;
+        const actualFilament = expectedFilament * (0.85 + Math.random() * 0.3);
+        const data = {
+            stopped: Math.random() > 0.9,
+            filamentRunout: Math.random() > 0.95,
+            elegoo: {
+                isWebsocketConnected: true,
+                printStatus: isPrinting ? Math.floor(Math.random() * 7) + 1 : 0,
+                expectedFilament: expectedFilament,
+                actualFilament: actualFilament,
+                currentDeficitMm: Math.max(0, expectedFilament - actualFilament),
+                movementPulses: Math.floor(Math.random() * 50000),
+                hardJamPercent: Math.random() * 40,
+                softJamPercent: Math.random() * 30,
+                passRatio: 0.85 + Math.random() * 0.3,
+                ratioThreshold: 0.25,
+                uiRefreshIntervalMs: 1000
+            }
+        };
+        res.write(`event: status\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    sendEvent();
+    const interval = setInterval(sendEvent, 1000);
+    req.on('close', () => clearInterval(interval));
+});
+
+// Mock sensor status - matches the real ESP32 response structure
 app.get('/sensor_status', (req, res) => {
+    const isPrinting = Math.random() > 0.3;
+    const expectedFilament = Math.random() * 500;
+    const actualFilament = expectedFilament * (0.85 + Math.random() * 0.3);  // 85-115% of expected
+    const deficit = Math.max(0, expectedFilament - actualFilament);
+
     res.json({
-        is_running: true,
-        filament_moving: Math.random() > 0.5,
-        pulse_count: Math.floor(Math.random() * 10000),
-        pulse_rate: Math.floor(Math.random() * 100),
-        distance_mm: Math.random() * 500,
-        uptime_ms: Date.now() - (Math.random() * 86400000),
+        stopped: Math.random() > 0.9,
+        filamentRunout: Math.random() > 0.95,
+        elegoo: {
+            isWebsocketConnected: Math.random() > 0.1,
+            printStatus: isPrinting ? Math.floor(Math.random() * 7) + 1 : 0,
+            expectedFilament: expectedFilament,
+            actualFilament: actualFilament,
+            currentDeficitMm: deficit,
+            movementPulses: Math.floor(Math.random() * 50000),
+            hardJamPercent: Math.random() * 40,
+            softJamPercent: Math.random() * 30,
+            passRatio: 0.85 + Math.random() * 0.3,
+            ratioThreshold: 0.25,
+            runoutPausePending: false,
+            runoutPauseRemainingMm: 0,
+            runoutPauseCommanded: false,
+            uiRefreshIntervalMs: 1000
+        },
         mac: '24:0A:C4:XX:XX:XX',
         ip: '192.168.1.100'
     });
