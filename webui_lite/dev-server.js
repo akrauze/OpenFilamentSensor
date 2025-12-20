@@ -119,47 +119,58 @@ setInterval(updateSimulation, 100);
 // ============================================================================
 
 function setupKeyboardControls() {
-    readline.emitKeypressEvents(process.stdin);
-    if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
+    // Only set up keyboard controls if we're in a TTY
+    if (!process.stdin.isTTY) {
+        console.log('   (Keyboard controls disabled - not a TTY)');
+        return;
     }
 
-    process.stdin.on('keypress', (str, key) => {
-        if (key.ctrl && key.name === 'c') {
-            console.log('\n👋 Shutting down...');
-            process.exit();
-        }
+    try {
+        readline.emitKeypressEvents(process.stdin);
+        process.stdin.setRawMode(true);
+        process.stdin.resume();  // Ensure stdin is flowing
 
-        switch (key.name) {
-            case '1':
-                simState.mode = MODES.NORMAL;
-                console.log(`\n✅ Mode: Normal print`);
-                printStatus();
-                break;
-            case '2':
-                simState.mode = MODES.HARD_JAM;
-                console.log(`\n🔴 Mode: Hard jam simulation`);
-                printStatus();
-                break;
-            case '3':
-                simState.mode = MODES.SOFT_JAM;
-                console.log(`\n🟡 Mode: Soft jam simulation`);
-                printStatus();
-                break;
-            case 'f':
-                simState.frozen = !simState.frozen;
-                console.log(`\n${simState.frozen ? '⏸️  Frozen' : '▶️  Resumed'}`);
-                printStatus();
-                break;
-            case 'r':
-                resetSimulation();
-                break;
-            case 's':
-                // Print current state for debugging
-                console.log('\n📊 Current State:', JSON.stringify(simState, null, 2));
-                break;
-        }
-    });
+        process.stdin.on('keypress', (str, key) => {
+            if (!key) return;
+
+            if (key.ctrl && key.name === 'c') {
+                console.log('\n👋 Shutting down...');
+                process.exit();
+            }
+
+            switch (key.name) {
+                case '1':
+                    simState.mode = MODES.NORMAL;
+                    console.log(`\n✅ Mode: Normal print`);
+                    printStatus();
+                    break;
+                case '2':
+                    simState.mode = MODES.HARD_JAM;
+                    console.log(`\n🔴 Mode: Hard jam simulation`);
+                    printStatus();
+                    break;
+                case '3':
+                    simState.mode = MODES.SOFT_JAM;
+                    console.log(`\n🟡 Mode: Soft jam simulation`);
+                    printStatus();
+                    break;
+                case 'f':
+                    simState.frozen = !simState.frozen;
+                    console.log(`\n${simState.frozen ? '⏸️  Frozen' : '▶️  Resumed'}`);
+                    printStatus();
+                    break;
+                case 'r':
+                    resetSimulation();
+                    break;
+                case 's':
+                    // Print current state for debugging
+                    console.log('\n📊 Current State:', JSON.stringify(simState, null, 2));
+                    break;
+            }
+        });
+    } catch (err) {
+        console.log('   (Keyboard controls disabled - error setting up TTY)');
+    }
 }
 
 // ============================================================================
