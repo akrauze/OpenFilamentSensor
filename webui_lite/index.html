@@ -2915,6 +2915,19 @@
                 currentSettings = await response.json();
                 updateDebugNavVisibility();
 
+                // Auto-sync timezone if needed
+                const browserOffset = new Date().getTimezoneOffset();
+                if (currentSettings.timezone_offset_minutes !== browserOffset) {
+                    console.log(`Syncing timezone offset: ${currentSettings.timezone_offset_minutes} -> ${browserOffset}`);
+                    fetch('/update_settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ timezone_offset_minutes: browserOffset })
+                    }).then(() => {
+                        currentSettings.timezone_offset_minutes = browserOffset;
+                    }).catch(err => console.error('Failed to sync timezone', err));
+                }
+
                 container.innerHTML = `
                     <h3 class="section-title">WiFi Settings</h3>
 
@@ -3409,10 +3422,13 @@
          */
         function compareLogTimestamps(a, b) {
             // Parse MM.DD.YY-HH:MM:SS to comparable YYMMDDHHMMSS
+            // Parse [YYYY-MM-DD HH:MM:SS] or YYYY-MM-DD HH:MM:SS to comparable start
+            // Supports both bracketed (Serial) and partial (LogText) formats if mixed,
+            // but we standardize on "YYYY-MM-DD HH:MM:SS"
             const parseTs = (ts) => {
-                const match = ts.match(/^(\d{2})\.(\d{2})\.(\d{2})-(\d{2}):(\d{2}):(\d{2})/);
-                if (!match) return '000000000000';
-                const [, mm, dd, yy, hh, min, ss] = match;
+                const match = ts.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+                if (!match) return '00000000000000';
+                const [, yy, mm, dd, hh, min, ss] = match;
                 return `${yy}${mm}${dd}${hh}${min}${ss}`;
             };
             return parseTs(a).localeCompare(parseTs(b));
@@ -3421,14 +3437,15 @@
         function formatLogTimestamp() {
             const now = new Date();
             const pad = (value) => String(value).padStart(2, '0');
+            const yy = now.getFullYear();
             const mm = pad(now.getMonth() + 1);
             const dd = pad(now.getDate());
-            const yy = pad(now.getFullYear() % 100);
             const hh = pad(now.getHours());
             const min = pad(now.getMinutes());
             const ss = pad(now.getSeconds());
-            return `${mm}.${dd}.${yy}-${hh}:${min}:${ss}`;
+            return `${yy}-${mm}-${dd} ${hh}:${min}:${ss}`;
         }
+
 
         function addLocalLogEntry(message) {
             const entry = `${formatLogTimestamp()} ${message}`;
@@ -3634,17 +3651,40 @@
             }
         }
 
-        function clearLogsDisplay() {
-            const container = document.getElementById('logContainer');
-            container.innerHTML = '<div class="log-entry info">Display cleared. Logs will refresh automatically.</div>';
-            showToast('Display cleared (accumulated logs preserved)', 'info');
-        }
+        async function clearLogsDisplay() {
+            try {
+                // Clear logs on the ESP32 first so they don't come back on next poll
+                const response = await fetch('/api/logs/clear', { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                showToast('Failed to clear device logs: ' + error.message, 'error');
+                // Continue to clear browser-side anyway
+            }
 
-        function clearAccumulatedLogs() {
             initLogAccumulator();
             const container = document.getElementById('logContainer');
-            container.innerHTML = '<div class="log-entry info">Accumulator reset. Fresh collection started.</div>';
-            showToast('Log accumulator reset', 'info');
+            container.innerHTML = '<div class="log-entry info">Display cleared. Fresh collection started.</div>';
+            showToast('Display cleared', 'success');
+        }
+
+        async function clearAccumulatedLogs() {
+            try {
+                // Clear logs on the ESP32 first so they don't come back on next poll
+                const response = await fetch('/api/logs/clear', { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                showToast('Failed to clear device logs: ' + error.message, 'error');
+                // Continue to clear browser-side anyway
+            }
+
+            initLogAccumulator();
+            const container = document.getElementById('logContainer');
+            container.innerHTML = '<div class="log-entry info">Logs cleared. Fresh collection started.</div>';
+            showToast('Logs cleared', 'success');
         }
 
         // Update Page (Lite OTA helper)
