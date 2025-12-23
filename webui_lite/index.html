@@ -1911,7 +1911,8 @@
 
             const expected = (data.elegoo?.expectedFilament || 0).toFixed(2);
             const actual = (data.elegoo?.actualFilament || 0).toFixed(2);
-            const deficit = (data.elegoo?.currentDeficitMm || 0).toFixed(2);
+            const graceState = data.elegoo?.graceState ?? 0;
+            const armedStatus = getGraceStateLabel(graceState);
             const pulses = (data.elegoo?.movementPulses || 0).toLocaleString();
 
             // 2x5 grid layout (10 cells)
@@ -1941,8 +1942,8 @@
                     <span class="minimal-status-value">${actual} mm</span>
                 </div>
                 <div class="minimal-status-row">
-                    <span class="minimal-status-label">Deficit</span>
-                    <span class="minimal-status-value">${deficit} mm</span>
+                    <span class="minimal-status-label">Detection</span>
+                    <span class="minimal-status-value">${armedStatus}</span>
                 </div>
                 <div class="minimal-status-row">
                     <span class="minimal-status-label">Pulses</span>
@@ -2021,6 +2022,7 @@
             expectedFilament: 'Amount of filament (in millimeters) that the printer has requested within the active tracking window or job.',
             actualFilament: 'Amount of filament that physically moved through the sensor over the same period. Compare against expected to gauge flow health.',
             deficit: 'Difference between expected and actual filament. A growing deficit indicates under-extrusion or a clog.',
+            detectionState: 'Current jam detection state. "Armed" means actively monitoring for jams. "Warming Up" and "Resuming" are grace periods where detection is paused to prevent false positives.',
             printStatus: 'Live status reported by the Elegoo controller (Idle, Printing, Heating, etc.). Use this to confirm whether the printer thinks it is running.'
         };
 
@@ -2725,9 +2727,9 @@
                         <div class="status-label">Actual Filament</div>
                         <div class="status-value">${(data.elegoo?.actualFilament || 0).toFixed(2)} mm</div>
                     </div>
-                    <div class="status-item" data-help-key="deficit">
-                        <div class="status-label">Deficit</div>
-                        <div class="status-value">${(data.elegoo?.currentDeficitMm || 0).toFixed(2)} mm</div>
+                    <div class="status-item" data-help-key="detectionState">
+                        <div class="status-label">Detection State</div>
+                        <div class="status-value">${getGraceStateLabel(data.elegoo?.graceState ?? 0)}</div>
                     </div>
                     <div class="status-item" data-help-key="printStatus">
                         <div class="status-label">Print Status</div>
@@ -2876,6 +2878,17 @@
                 10: 'File Checking', 13: 'Printing', 16: 'Heating', 20: 'Bed Leveling'
             };
             return statusMap[status] || 'Unknown';
+        }
+
+        function getGraceStateLabel(graceState) {
+            const graceStateMap = {
+                0: 'Not Printing',   // IDLE
+                1: 'Print Starting', // START_GRACE
+                2: 'Resuming',       // RESUME_GRACE
+                3: 'Armed',          // ACTIVE
+                4: 'Jammed'          // JAMMED
+            };
+            return graceStateMap[graceState] || 'Unknown';
         }
 
         function buildSettingsPayload() {

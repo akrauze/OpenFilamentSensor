@@ -112,6 +112,7 @@ typedef struct
     float               hardJamPercent;
     float               softJamPercent;
     bool                graceActive;
+    uint8_t             graceState;  // GraceState enum value (0=IDLE, 1=START_GRACE, 2=RESUME_GRACE, 3=ACTIVE, 4=JAMMED)
     float               expectedRateMmPerSec;
     float               actualRateMmPerSec;
     unsigned long       movementPulseCount;

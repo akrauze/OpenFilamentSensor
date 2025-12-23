@@ -1363,6 +1363,7 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.hardJamPercent       = jamState.hardJamPercent;
     info.softJamPercent       = jamState.softJamPercent;
     info.graceActive          = jamState.graceActive;
+    info.graceState           = static_cast<uint8_t>(jamState.graceState);
     info.expectedRateMmPerSec = jamState.expectedRateMmPerSec;
     info.actualRateMmPerSec   = jamState.actualRateMmPerSec;
     info.movementPulseCount   = movementPulseCount;

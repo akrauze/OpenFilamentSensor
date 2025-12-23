@@ -424,6 +424,7 @@ void WebServer::buildStatusJson(DynamicJsonDocument &jsonDoc, const printer_info
     elegoo["uiRefreshIntervalMs"]  = settingsManager.getUiRefreshIntervalMs();
     elegoo["flowTelemetryStaleMs"] = settingsManager.getFlowTelemetryStaleMs();
     elegoo["graceActive"]          = elegooStatus.graceActive;
+    elegoo["graceState"]           = elegooStatus.graceState;
     elegoo["expectedRateMmPerSec"] = elegooStatus.expectedRateMmPerSec;
     elegoo["actualRateMmPerSec"]   = elegooStatus.actualRateMmPerSec;
     elegoo["runoutPausePending"]   = elegooStatus.runoutPausePending;
