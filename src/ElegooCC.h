@@ -215,6 +215,7 @@ class ElegooCC
         bool verboseLogging;
         bool flowSummaryLogging;
         bool pinDebugLogging;
+        bool motionMonitoringEnabled;
         float pulseReductionPercent;
         float movementMmPerPulse;
     };

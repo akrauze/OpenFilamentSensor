@@ -11,9 +11,8 @@ struct user_settings
     bool   ap_mode;
     String elegooip;
     bool   pause_on_runout;
-    bool   enabled;
+    bool   enabled;                // Motion monitoring (jam detection) enabled
     bool   has_connected;
-    float  detection_length_mm;          // DEPRECATED: Use ratio-based detection instead
     int    detection_grace_period_ms;    // Grace period after move command before checking jams
     int    detection_ratio_threshold;    // Soft jam: pass ratio threshold (25 = 25% actual allowed before alert)
     float  detection_hard_jam_mm;        // Hard jam: mm expected with zero movement to trigger
@@ -62,9 +61,8 @@ class SettingsManager
     bool   isAPMode();
     String getElegooIP();
     bool   getPauseOnRunout();
-    bool   getEnabled();
+    bool   getEnabled();                    // Motion monitoring enabled
     bool   getHasConnected();
-    float  getDetectionLengthMM();          // DEPRECATED: Use ratio-based detection
     int    getDetectionGracePeriodMs();     // Grace period for look-ahead moves
     float  getDetectionRatioThreshold();    // Soft jam ratio threshold (returns 0.0-1.0 for internal use)
       float  getDetectionHardJamMm();         // Hard jam threshold
@@ -90,9 +88,8 @@ class SettingsManager
     void setAPMode(bool apMode);
     void setElegooIP(const String &ip);
     void setPauseOnRunout(bool pauseOnRunout);
-    void setEnabled(bool enabled);
+    void setEnabled(bool enabled);              // Motion monitoring enabled
     void setHasConnected(bool hasConnected);
-    void setDetectionLengthMM(float value);            // DEPRECATED: Use ratio-based detection
     void setDetectionGracePeriodMs(int periodMs);      // Grace period setter
     void setDetectionRatioThreshold(int thresholdPercent);  // Soft jam ratio threshold setter (0-100%)
     void setDetectionHardJamMm(float mmThreshold);     // Hard jam threshold setter

@@ -719,6 +719,7 @@ void ElegooCC::refreshSettingsCache()
     cachedSettings.verboseLogging = settingsManager.getVerboseLogging();
     cachedSettings.flowSummaryLogging = settingsManager.getFlowSummaryLogging();
     cachedSettings.pinDebugLogging = settingsManager.getPinDebugLogging();
+    cachedSettings.motionMonitoringEnabled = settingsManager.getEnabled();
     cachedSettings.pulseReductionPercent = settingsManager.getPulseReductionPercent();
     cachedSettings.movementMmPerPulse = settingsManager.getMovementMmPerPulse();
 }
@@ -1155,6 +1156,12 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
         return;
     }
 
+    if (!cachedSettings.motionMonitoringEnabled)
+    {
+        filamentStopped = false;
+        return;
+    }
+
     // Use cached jam config instead of rebuilding
     const JamConfig& jamConfig = cachedJamConfig;
 
@@ -1219,16 +1226,12 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
 bool ElegooCC::shouldPausePrint(unsigned long currentTime)
 {
     pauseTriggeredByRunout = false;
-
-    if (!settingsManager.getEnabled())
-    {
-        return false;
-    }
+    bool motionMonitoringEnabled = settingsManager.getEnabled();
 
     updateRunoutPauseCountdown();
     bool runoutPauseReady    = isRunoutPauseReady();
     bool pauseConditionRunout = runoutPauseReady;
-    bool pauseConditionFlow  = filamentStopped;
+    bool pauseConditionFlow  = motionMonitoringEnabled && filamentStopped;
     bool pauseCondition      = pauseConditionRunout || pauseConditionFlow;
 
     bool           sdcpLoss      = false;
@@ -1329,8 +1332,13 @@ printer_info_t ElegooCC::getCurrentInformation()
 {
     printer_info_t info;
     JamState jamState = jamDetector.getState();
+    bool motionMonitoringEnabled = settingsManager.getEnabled();
+    if (!motionMonitoringEnabled)
+    {
+        jamState = JamState{};
+    }
 
-    info.filamentStopped      = filamentStopped;
+    info.filamentStopped      = motionMonitoringEnabled ? filamentStopped : false;
     info.filamentRunout       = filamentRunout;
     info.runoutPausePending   = filamentRunout && runoutPausePending && settingsManager.getPauseOnRunout();
     info.runoutPauseCommanded = runoutPauseCommanded;

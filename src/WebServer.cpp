@@ -134,7 +134,7 @@ void WebServer::begin()
             if (jsonObj.containsKey("enabled"))
                 settingsManager.setEnabled(jsonObj["enabled"].as<bool>());
             if (jsonObj.containsKey("detection_length_mm"))
-                settingsManager.setDetectionLengthMM(jsonObj["detection_length_mm"].as<float>());
+                settingsManager.setDetectionHardJamMm(jsonObj["detection_length_mm"].as<float>());
             if (jsonObj.containsKey("detection_grace_period_ms"))
                 settingsManager.setDetectionGracePeriodMs(jsonObj["detection_grace_period_ms"].as<int>());
             if (jsonObj.containsKey("detection_ratio_threshold"))
