@@ -24,8 +24,6 @@ body:
       label: Use Case
       description: How would this feature benefit you or other users? What problem would it solve?
       placeholder: Explain why this feature would be useful...
-    validations:
-      required: true
 
   - type: textarea
     id: proposed-solution
@@ -47,8 +45,6 @@ body:
         - Configuration
         - Documentation
         - Other
-    validations:
-      required: true
 
   - type: textarea
     id: alternatives

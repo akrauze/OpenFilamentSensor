@@ -16,10 +16,7 @@ body:
       description: What type of crash are you experiencing?
       options:
         - Unexpected Reboot/Restart
-        - Watchdog Timeout
-        - Stack Overflow
         - Exception/Fault
-        - Memory Allocation Failure
         - Freeze/Hang (no reboot)
         - Boot Loop
         - Other Crash
@@ -42,10 +39,7 @@ body:
       description: Specific information about the crash (stack traces, exception codes, etc.)
       placeholder: |
         If you see any of the following, please copy them here:
-        - Guru Meditation Error
-        - Exception details
         - Stack trace
-        - Backtrace
         - Memory dump
       render: text
 
@@ -59,8 +53,6 @@ body:
         2. Start printing...
         3. Crash occurs after X minutes/hours...
         4. Or: Crash happens when accessing Web UI...
-    validations:
-      required: true
 
   - type: dropdown
     id: frequency
@@ -73,8 +65,6 @@ body:
         - Sometimes (once per day)
         - Occasionally (once per week)
         - Rarely (first time or very infrequent)
-    validations:
-      required: true
 
   - type: input
     id: esp32-board
@@ -93,13 +83,6 @@ body:
       placeholder: Check the Web UI or use git commit hash
     validations:
       required: true
-
-  - type: input
-    id: printer-model
-    attributes:
-      label: Printer Model (if applicable)
-      description: What 3D printer are you using with OpenFilamentSensor?
-      placeholder: e.g., Elegoo Neptune 4, Creality Ender 3, etc.
 
   - type: textarea
     id: serial-logs
@@ -132,17 +115,6 @@ body:
         - Different sensor?
         - Configuration changes?
         - Network changes?
-
-  - type: textarea
-    id: power-info
-    attributes:
-      label: Power Information
-      description: Details about power supply and connections
-      placeholder: |
-        - Power source (USB, external PSU, etc.)
-        - Voltage measurements (if available)
-        - Cable length/gauge
-        - Any power-related issues observed
 
   - type: textarea
     id: additional-context
