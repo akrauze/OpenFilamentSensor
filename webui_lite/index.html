@@ -756,6 +756,24 @@
             box-shadow: var(--shadow-md);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, var(--error), #d23a31);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #2d8f44);
+            color: white;
+        }
+
+        .btn-success:hover {
+            box-shadow: var(--shadow-md);
+        }
+
         .btn-group {
             display: flex;
             gap: 12px;
@@ -1299,8 +1317,8 @@
             <h3>Unsaved Changes</h3>
             <p>Save your changes before leaving?</p>
             <div class="btn-group">
-                <button type="button" class="btn" id="saveAndLeaveBtn">Save Changes</button>
-                <button type="button" class="btn btn-secondary" id="discardSettingsBtn">Discard Changes</button>
+                <button type="button" class="btn btn-success" id="saveAndLeaveBtn">Save Changes</button>
+                <button type="button" class="btn btn-danger" id="discardSettingsBtn">Discard Changes</button>
                 <button type="button" class="btn btn-secondary" id="stayOnSettingsBtn">Return to Settings</button>
             </div>
         </div>
