@@ -1158,6 +1158,14 @@
             border-bottom: 2px solid var(--border-color);
         }
 
+        .advanced-settings {
+            display: none;
+        }
+
+        .advanced-settings.visible {
+            display: block;
+        }
+
         /* Minimal Mode Styles */
         .minimal-mode-overlay {
             display: none;
@@ -2057,6 +2065,15 @@
             const debugNavBtn = document.getElementById('debugNavBtn');
             if (debugNavBtn && currentSettings) {
                 debugNavBtn.style.display = currentSettings.show_debug_page ? '' : 'none';
+            }
+        }
+
+        // Toggle advanced settings visibility
+        function toggleAdvancedSettings() {
+            const checkbox = document.getElementById('show_advanced_settings');
+            const section = document.getElementById('advancedSettingsSection');
+            if (checkbox && section) {
+                section.classList.toggle('visible', checkbox.checked);
             }
         }
 
@@ -3050,30 +3067,12 @@
                         <p class="form-help">Simulate under-extrusion by counting only a percentage of pulses. 100% = normal operation, 50% = every other pulse, 20% = 1 out of 5 pulses, 0% = complete blockage. Useful for testing jam detection without physically modifying filament flow.</p>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Detection Grace Period (ms)</label>
-                        <input type="number" class="form-input" id="detection_grace_period_ms" value="${currentSettings.detection_grace_period_ms || 10000}" min="0" max="30000" step="100">
-                        <p class="form-help">Grace period after print starts or resumes before jam detection activates. Prevents false positives during startup and after pause/resume. Default: 10000ms (10 seconds).</p>
-                    </div>
-
                     <h3 class="section-title">Jam Detection Thresholds</h3>
-
-                    <div class="form-group">
-                        <label class="form-label">Soft Jam Ratio Threshold (%)</label>
-                        <input type="number" class="form-input" id="detection_ratio_threshold" value="${currentSettings.detection_ratio_threshold || 25}" min="5" max="50">
-                        <p class="form-help">Percentage of expected filament movement that must actually occur to be considered normal. For example, 60% means if flow drops below 60% of expected for longer than the soft jam time threshold, a soft jam is triggered. Higher = more sensitive (warns on smaller deficits); lower = more tolerant (only severe under-extrusion triggers).</p>
-                    </div>
 
                     <div class="form-group">
                         <label class="form-label">Soft Jam Time Threshold (seconds)</label>
                         <input type="number" class="form-input" id="detection_soft_jam_time_ms" value="${(currentSettings.detection_soft_jam_time_ms / 1000 || 10)}" min="3" max="30">
                         <p class="form-help">How long the flow ratio must stay below the threshold before triggering a pause. Longer delays prevent false positives from temporary under-extrusion (like bridges or overhangs), but slower to catch real clogs. Default: 10 seconds.</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Hard Jam Distance Threshold (mm)</label>
-                        <input type="number" step="0.5" class="form-input" id="detection_hard_jam_mm" value="${(currentSettings.detection_hard_jam_mm || 5.0).toFixed(1)}" min="1" max="15">
-                        <p class="form-help">If the printer commands at least this much filament movement but the sensor detects zero pulses for the hard jam time threshold, a hard jam is triggered. Lower = more sensitive to complete blockages. Increase if you have extruder slippage or very soft filament. Default: 5mm.</p>
                     </div>
 
                     <div class="form-group">
@@ -3100,16 +3099,31 @@
                         <p class="form-help" style="margin-left: 36px; margin-top: 8px;">Automatically adjusts the 'Filament Movement per Pulse' value based on actual print data when a print completes. Enable this to fine-tune sensor accuracy over time. Requires at least one complete print to calibrate.</p>
                     </div>
 
-                      <h3 class="section-title">Logging Settings</h3>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="show_advanced_settings" onchange="toggleAdvancedSettings()">
+                        <label class="form-label" for="show_advanced_settings" style="margin: 0;">Show advanced settings</label>
+                    </div>
+
+                    <div id="advancedSettingsSection" class="advanced-settings">
+
+                      <h3 class="section-title">Advanced Detection Settings</h3>
 
                       <div class="form-group">
-                          <label class="form-label">Log Level</label>
-                          <select class="form-select" id="log_level">
-                              <option value="0" ${(currentSettings.log_level === 0 || currentSettings.log_level === undefined) ? 'selected' : ''}>Normal</option>
-                              <option value="1" ${currentSettings.log_level == 1 ? 'selected' : ''}>Verbose</option>
-                              <option value="2" ${currentSettings.log_level == 2 ? 'selected' : ''}>Pin Values (Emergency Debug)</option>
-                          </select>
-                          <p class="form-help">Normal = production logging (startup, successes, failures, basic stats). Verbose = detailed flow state and telemetry. Pin Values = raw pin states (very chatty, emergency debugging only).</p>
+                          <label class="form-label">Detection Grace Period (ms)</label>
+                          <input type="number" class="form-input" id="detection_grace_period_ms" value="${currentSettings.detection_grace_period_ms || 10000}" min="0" max="30000" step="100">
+                          <p class="form-help">Grace period after print starts or resumes before jam detection activates. Prevents false positives during startup and after pause/resume. Default: 10000ms (10 seconds).</p>
+                      </div>
+
+                      <div class="form-group">
+                          <label class="form-label">Soft Jam Ratio Threshold (%)</label>
+                          <input type="number" class="form-input" id="detection_ratio_threshold" value="${currentSettings.detection_ratio_threshold || 25}" min="5" max="50">
+                          <p class="form-help">Percentage of expected filament movement that must actually occur to be considered normal. For example, 60% means if flow drops below 60% of expected for longer than the soft jam time threshold, a soft jam is triggered. Higher = more sensitive (warns on smaller deficits); lower = more tolerant (only severe under-extrusion triggers).</p>
+                      </div>
+
+                      <div class="form-group">
+                          <label class="form-label">Hard Jam Distance Threshold (mm)</label>
+                          <input type="number" step="0.5" class="form-input" id="detection_hard_jam_mm" value="${(currentSettings.detection_hard_jam_mm || 5.0).toFixed(1)}" min="1" max="15">
+                          <p class="form-help">If the printer commands at least this much filament movement but the sensor detects zero pulses for the hard jam time threshold, a hard jam is triggered. Lower = more sensitive to complete blockages. Increase if you have extruder slippage or very soft filament. Default: 5mm.</p>
                       </div>
 
                       <div class="form-group">
@@ -3120,6 +3134,18 @@
                               <option value="2" ${currentSettings.detection_mode == 2 ? 'selected' : ''}>Soft only (ignore hard detection)</option>
                           </select>
                           <p class="form-help">Choose how the firmware evaluates jams; use Hard only to focus on total blockages or Soft only to watch for gradual underextrusion.</p>
+                      </div>
+
+                      <h3 class="section-title">Logging Settings</h3>
+
+                      <div class="form-group">
+                          <label class="form-label">Log Level</label>
+                          <select class="form-select" id="log_level">
+                              <option value="0" ${(currentSettings.log_level === 0 || currentSettings.log_level === undefined) ? 'selected' : ''}>Normal</option>
+                              <option value="1" ${currentSettings.log_level == 1 ? 'selected' : ''}>Verbose</option>
+                              <option value="2" ${currentSettings.log_level == 2 ? 'selected' : ''}>Pin Values (Emergency Debug)</option>
+                          </select>
+                          <p class="form-help">Normal = production logging (startup, successes, failures, basic stats). Verbose = detailed flow state and telemetry. Pin Values = raw pin states (very chatty, emergency debugging only).</p>
                       </div>
 
                       <div class="form-group checkbox-group">
@@ -3154,6 +3180,8 @@
                         <label class="form-label" for="show_debug_page" style="margin: 0;">Show Debug Page</label>
                         <p class="form-help" style="margin-left: 36px; margin-top: 8px;">Show the Debug page in the navigation menu. Useful for troubleshooting.</p>
                     </div>
+
+                    </div><!-- end advancedSettingsSection -->
 
                     <div class="btn-group">
                         <button type="button" class="btn" onclick="saveSettings()">Save Settings</button>
