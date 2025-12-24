@@ -43,19 +43,6 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: sensor-type
-    attributes:
-      label: Sensor Type
-      description: What type of filament sensor are you using?
-      options:
-        - BigTreeTech Smart Filament Sensor
-        - BigTreeTech Filament Runout Sensor
-        - Generic/Other Motion Sensor
-        - Generic/Other Runout Sensor
-    validations:
-      required: true
-
   - type: input
     id: esp32-board
     attributes:
@@ -71,17 +58,7 @@ body:
       label: Firmware Version
       description: What firmware version are you running?
       placeholder: Check the Web UI or use git commit hash
-    validations:
-      required: true
 
-  - type: input
-    id: printer-model
-    attributes:
-      label: Printer Model
-      description: What 3D printer are you using with OpenFilamentSensor?
-      placeholder: e.g., Elegoo Neptune 4, Creality Ender 3, etc.
-    validations:
-      required: true
 
   - type: textarea
     id: configuration
@@ -105,8 +82,6 @@ body:
       label: Expected Behavior
       description: What should have happened?
       placeholder: Describe what the correct behavior should be...
-    validations:
-      required: true
 
   - type: textarea
     id: actual-behavior
@@ -114,8 +89,6 @@ body:
       label: Actual Behavior
       description: What actually happened?
       placeholder: Describe what actually occurred...
-    validations:
-      required: true
 
   - type: textarea
     id: additional-context
