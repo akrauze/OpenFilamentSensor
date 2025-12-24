@@ -318,7 +318,7 @@ void SystemServices::syncTimeWithNTP(unsigned long currentTime)
 
 void SystemServices::monitorHeap(unsigned long currentTime)
 {
-    if (currentTime - lastHeapCheck <= 60000)
+    if (currentTime - lastHeapCheck <= 300000)
     {
         return;
     }
@@ -339,7 +339,7 @@ void SystemServices::monitorHeap(unsigned long currentTime)
         logger.log(F("WARNING: Heap fragmentation high!"), LOG_NORMAL);
     }
 
-    if (minHeap < 20000)
+    if (minHeap < 2000)
     {
         logger.logf(LOG_NORMAL, "CRITICAL: Low memory! Min heap: %lu", minHeap);
     }
