@@ -98,12 +98,13 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.actualFilamentMM     = actualFilamentMM;
     info.lastExpectedDeltaMM  = lastExpectedDeltaMM;
     info.telemetryAvailable   = telemetryAvailableLastStatus;
-    portEXIT_CRITICAL(&_stateMutex);
 
-    // Expose deficit metrics for UI from jam detector
+    // Expose deficit metrics for UI from jam detector (read inside critical section
+    // to avoid race with checkFilamentMovement() updates)
     info.currentDeficitMm     = jamState.deficit;
     info.deficitThresholdMm   = 0.0f;
-    info.deficitRatio         = jamState.deficit / (motionSensor.getExpectedDistance() > 0.1f ? motionSensor.getExpectedDistance() : 1.0f);
+    float expectedDist        = motionSensor.getExpectedDistance();
+    info.deficitRatio         = jamState.deficit / (expectedDist > 0.1f ? expectedDist : 1.0f);
     info.passRatio            = jamState.passRatio;
     info.hardJamPercent       = jamState.hardJamPercent;
     info.softJamPercent       = jamState.softJamPercent;
@@ -112,6 +113,7 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.expectedRateMmPerSec = jamState.expectedRateMmPerSec;
     info.actualRateMmPerSec   = jamState.actualRateMmPerSec;
     info.movementPulseCount   = movementPulseCount;
+    portEXIT_CRITICAL(&_stateMutex);
 
     return info;
 }
