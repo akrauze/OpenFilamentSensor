@@ -299,6 +299,7 @@ void WebServer::begin()
     server.on(kRouteLogsText, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
+                /*
                   AsyncWebServerResponse *response = request->beginChunkedResponse("text/plain",
                     [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
                         // This uses a custom shim to adapt the Print interface to the chunked response
@@ -307,12 +308,11 @@ void WebServer::begin()
                         // Actually, Logger::streamLogs takes a Print*. AsyncResponseStream inherits from Print!
                         return 0; 
                     });
-                    
-                  // Better approach: Use AsyncResponseStream
+                */ 
+         
                   AsyncResponseStream *streamResponse = request->beginResponseStream("text/plain");
                   streamResponse->addHeader("Content-Disposition", "attachment; filename=\"logs.txt\"");
-                  
-                  // We need to write to the stream. The stream IS a Print object.
+    
                   logger.streamLogs(streamResponse);
                   
                   request->send(streamResponse);

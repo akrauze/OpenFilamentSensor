@@ -180,7 +180,6 @@ ElegooCC::ElegooCC()
     lastPauseRequestMs = 0;
     lastPrintEndMs     = 0;
     lastJamDetectorUpdateMs = 0;
-    lastJamDetectorUpdateMs = 0;
     cacheLock   = portMUX_INITIALIZER_UNLOCKED;
     _stateMutex = portMUX_INITIALIZER_UNLOCKED;
 
@@ -510,8 +509,8 @@ void ElegooCC::handleStatus(JsonDocument &doc)
                  resetFilamentTracking();
             }
         }
-            }
-        }
+            //}
+        //}
         
         portENTER_CRITICAL(&_stateMutex);
         printStatus  = newStatus;
@@ -1446,15 +1445,6 @@ void ElegooCC::setMachineStatuses(const int *statusArray, int arraySize)
             machineStatusMask |= (1 << statusArray[i]);
         }
     }
-}
-
-// Get current printer information
-printer_info_t ElegooCC::getCurrentInformation()
-{
-    info.actualRateMmPerSec   = jamState.actualRateMmPerSec;
-    info.movementPulseCount   = movementPulseCount;
-
-    return info;
 }
 
 bool ElegooCC::startDiscoveryAsync(unsigned long timeoutMs, DiscoveryCallback callback)
