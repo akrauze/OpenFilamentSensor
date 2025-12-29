@@ -132,6 +132,7 @@ jobs:
         run: |
           git fetch --no-tags origin main
           git checkout origin/main -- tools/set_build_timestamp.py
+          git checkout origin/main -- tools/build_and_flash.py
 
       - name: Resolve chip family
         id: chip
