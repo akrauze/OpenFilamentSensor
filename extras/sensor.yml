@@ -7,6 +7,7 @@
       - filamentRunout
       - mac
       - ip
+      - uptimeSec
       - elegoo
     value_template: "{{ value_json.elegoo.isWebsocketConnected }}"
 
@@ -153,6 +154,10 @@
       ofs_ip:
         friendly_name: "OFS IP Address"
         value_template: "{{ state_attr('sensor.ofs_status', 'ip') }}"
+      ofs_uptime:
+        friendly_name: "OFS Uptime"
+        value_template: "{{ state_attr('sensor.ofs_status', 'uptimeSec') }}"
+        unit_of_measurement: "s"
       ofs_mainboard_id:
         friendly_name: "OFS Mainboard ID"
         value_template: "{{ state_attr('sensor.ofs_status', 'elegoo').mainboardID }}"
