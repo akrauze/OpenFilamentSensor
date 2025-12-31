@@ -44,6 +44,19 @@
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
 #include "ElegooCC.h"
+#include "SettingsManager.h"
+
+// ============================================================================
+// Display Mode Configuration
+// ============================================================================
+// Set OLED_DISPLAY_MODE via build flags: -D OLED_DISPLAY_MODE=X
+//   Mode 1: IP last octet only (default) - shows "IP: 104"
+//   Mode 2: Full IP address - shows "192.168.0.104"
+//   Mode 3: Both IPs - shows ESP32 IP and Elegoo printer IP
+//   Mode 4: Both IPs + connection status
+#ifndef OLED_DISPLAY_MODE
+#define OLED_DISPLAY_MODE 1
+#endif
 
 // ============================================================================
 // Display Configuration
@@ -93,6 +106,8 @@ static DisplayStatus lastDrawnStatus = DisplayStatus::NORMAL;
 static unsigned long lastUpdateMs = 0;
 static bool displayInitialized = false;
 static uint8_t lastDisplayedIpOctet = 0;  // Track IP to redraw when WiFi connects
+static bool lastConnectionStatus = false; // Track connection state for mode 4
+static String lastPrinterIp = "";          // Track printer IP for modes 3/4
 
 // Forward declarations
 static void drawStatus(DisplayStatus status);
@@ -153,12 +168,25 @@ void statusDisplayLoop()
     uint8_t currentIpOctet = WiFi.localIP()[3];
     bool ipChanged = (currentIpOctet != lastDisplayedIpOctet);
     
-    // Redraw if status changed OR if IP changed (for NORMAL state)
-    if (currentStatus != lastDrawnStatus || (ipChanged && currentStatus == DisplayStatus::NORMAL))
+    // Check if printer IP or connection status changed (for modes 3/4)
+    String currentPrinterIp = settingsManager.getElegooIP();
+    printer_info_t info = elegooCC.getCurrentInformation();
+    bool printerIpChanged = (currentPrinterIp != lastPrinterIp);
+    bool connectionChanged = (info.isWebsocketConnected != lastConnectionStatus);
+    
+    // Redraw if any relevant state changed
+    bool needsRedraw = (currentStatus != lastDrawnStatus) ||
+                       (ipChanged && currentStatus == DisplayStatus::NORMAL) ||
+                       (printerIpChanged && currentStatus == DisplayStatus::NORMAL) ||
+                       (connectionChanged && currentStatus == DisplayStatus::NORMAL);
+    
+    if (needsRedraw)
     {
         drawStatus(currentStatus);
         lastDrawnStatus = currentStatus;
         lastDisplayedIpOctet = currentIpOctet;
+        lastPrinterIp = currentPrinterIp;
+        lastConnectionStatus = info.isWebsocketConnected;
     }
 }
 
@@ -181,24 +209,105 @@ static void drawStatus(DisplayStatus status)
     {
         case DisplayStatus::NORMAL:
         {
-            // Show IP address (last octet) for easy device identification
+            display.setTextColor(SSD1306_WHITE);
+            
+#if OLED_DISPLAY_MODE == 1
+            // Mode 1: Show IP last octet only (large, easy to read)
             IPAddress ip = WiFi.localIP();
             uint8_t lastOctet = ip[3];
             
-            // "IP:" label - small text at top of visible area
-            // TextSize 1 = 6x8 pixels per character
+            // "IP:" label - small text at top
             display.setTextSize(1);
-            display.setTextColor(SSD1306_WHITE);
-            display.setCursor(VIS_X(24), VIS_Y(2));  // Centered on 72px width
+            display.setCursor(VIS_X(24), VIS_Y(2));
             display.print("IP:");
             
-            // Large last octet number - centered below label
-            // TextSize 3 = 18x24 pixels per character
+            // Large last octet number - centered
             display.setTextSize(3);
             int numWidth = (lastOctet < 10) ? 18 : (lastOctet < 100) ? 36 : 54;
-            int xPos = (VISIBLE_WIDTH - numWidth) / 2;  // Center horizontally
+            int xPos = (VISIBLE_WIDTH - numWidth) / 2;
             display.setCursor(VIS_X(xPos), VIS_Y(14));
             display.print(lastOctet);
+            
+#elif OLED_DISPLAY_MODE == 2
+            // Mode 2: Full IP address
+            {
+                IPAddress ip = WiFi.localIP();
+                String ipStr = ip.toString();
+                
+                display.setTextSize(1);
+                display.setCursor(VIS_X(6), VIS_Y(2));
+                display.print("My IP:");
+                
+                // IP address - may need smaller font or scrolling for long IPs
+                display.setCursor(VIS_X(0), VIS_Y(16));
+                display.print(ipStr);
+            }
+            
+#elif OLED_DISPLAY_MODE == 3
+            // Mode 3: Both IPs (ESP32 and Elegoo printer)
+            {
+                IPAddress myIp = WiFi.localIP();
+                String printerIp = settingsManager.getElegooIP();
+                
+                display.setTextSize(1);
+                
+                // Line 1: ME: <ip>
+                display.setCursor(VIS_X(0), VIS_Y(2));
+                display.print("ME:");
+                display.setCursor(VIS_X(0), VIS_Y(12));
+                display.print(myIp.toString());
+                
+                // Line 2: PR: <ip>
+                display.setCursor(VIS_X(0), VIS_Y(24));
+                display.print("PR:");
+                display.setCursor(VIS_X(18), VIS_Y(24));
+                display.print(printerIp.length() > 0 ? printerIp : "--");
+            }
+            
+#elif OLED_DISPLAY_MODE == 4
+            // Mode 4: Both IPs + connection status
+            {
+                IPAddress myIp = WiFi.localIP();
+                String printerIp = settingsManager.getElegooIP();
+                printer_info_t info = elegooCC.getCurrentInformation();
+                
+                display.setTextSize(1);
+                
+                // Line 1: ME: <last octet>
+                display.setCursor(VIS_X(0), VIS_Y(0));
+                display.print("ME:");
+                display.print(myIp[3]);
+                
+                // Line 2: PR: <last octet or -->
+                display.setCursor(VIS_X(0), VIS_Y(10));
+                display.print("PR:");
+                if (printerIp.length() > 0) {
+                    // Extract last octet from printer IP string
+                    int lastDot = printerIp.lastIndexOf('.');
+                    if (lastDot > 0) {
+                        display.print(printerIp.substring(lastDot + 1));
+                    } else {
+                        display.print(printerIp);
+                    }
+                } else {
+                    display.print("--");
+                }
+                
+                // Line 3: Connection status
+                display.setCursor(VIS_X(0), VIS_Y(22));
+                if (info.isWebsocketConnected) {
+                    display.print("* CONNECTED *");
+                } else {
+                    display.print("DISCONNECTED");
+                }
+                
+                // Line 4: Print status if connected
+                display.setCursor(VIS_X(0), VIS_Y(32));
+                if (info.isWebsocketConnected && info.isPrinting) {
+                    display.print("PRINTING");
+                }
+            }
+#endif
             break;
         }
             
