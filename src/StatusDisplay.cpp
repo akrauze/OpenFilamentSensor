@@ -51,9 +51,10 @@
 // ============================================================================
 // Set OLED_DISPLAY_MODE via build flags: -D OLED_DISPLAY_MODE=X
 //   Mode 1: IP last octet only (default) - shows "IP: 104"
-//   Mode 2: Full IP address - shows "192.168.0.104"
-//   Mode 3: Both IPs - shows ESP32 IP and Elegoo printer IP
-//   Mode 4: Both IPs + connection status
+//   Mode 2: Full IP address - shows "192..104" (first..last octet)
+//   Mode 3: Both IPs - shows ESP32 IP and Elegoo printer IP (abbreviated)
+//   Mode 4: Both IPs + connection status (abbreviated)
+//   Mode 5: Uptime display - shows time since boot in adaptive D:H:M:S format
 #ifndef OLED_DISPLAY_MODE
 #define OLED_DISPLAY_MODE 1
 #endif
@@ -108,6 +109,7 @@ static bool displayInitialized = false;
 static uint8_t lastDisplayedIpOctet = 0;  // Track IP to redraw when WiFi connects
 static bool lastConnectionStatus = false; // Track connection state for mode 4
 static String lastPrinterIp = "";          // Track printer IP for modes 3/4
+static unsigned long lastDisplayedUptime = 0;  // Track uptime for mode 5 refresh
 
 // Forward declarations
 static void drawStatus(DisplayStatus status);
@@ -173,12 +175,17 @@ void statusDisplayLoop()
     printer_info_t info = elegooCC.getCurrentInformation();
     bool printerIpChanged = (currentPrinterIp != lastPrinterIp);
     bool connectionChanged = (info.isWebsocketConnected != lastConnectionStatus);
-    
+
+    // Check if uptime changed (for mode 5 - refresh every second)
+    unsigned long currentUptimeSec = millis() / 1000;
+    bool uptimeChanged = (currentUptimeSec != lastDisplayedUptime);
+
     // Redraw if any relevant state changed
     bool needsRedraw = (currentStatus != lastDrawnStatus) ||
                        (ipChanged && currentStatus == DisplayStatus::NORMAL) ||
                        (printerIpChanged && currentStatus == DisplayStatus::NORMAL) ||
-                       (connectionChanged && currentStatus == DisplayStatus::NORMAL);
+                       (connectionChanged && currentStatus == DisplayStatus::NORMAL) ||
+                       (uptimeChanged && currentStatus == DisplayStatus::NORMAL);
     
     if (needsRedraw)
     {
@@ -187,6 +194,7 @@ void statusDisplayLoop()
         lastDisplayedIpOctet = currentIpOctet;
         lastPrinterIp = currentPrinterIp;
         lastConnectionStatus = info.isWebsocketConnected;
+        lastDisplayedUptime = currentUptimeSec;
     }
 }
 
@@ -229,60 +237,79 @@ static void drawStatus(DisplayStatus status)
             display.print(lastOctet);
             
 #elif OLED_DISPLAY_MODE == 2
-            // Mode 2: Full IP address
+            // Mode 2: First..Last octet format (fits 72px width)
             {
                 IPAddress ip = WiFi.localIP();
-                String ipStr = ip.toString();
-                
+
                 display.setTextSize(1);
-                display.setCursor(VIS_X(6), VIS_Y(2));
-                display.print("My IP:");
-                
-                // IP address - may need smaller font or scrolling for long IPs
-                display.setCursor(VIS_X(0), VIS_Y(16));
-                display.print(ipStr);
+                display.setCursor(VIS_X(18), VIS_Y(2));
+                display.print("My IP");
+
+                display.setTextSize(2);
+                char buf[12];
+                snprintf(buf, sizeof(buf), "%d..%d", ip[0], ip[3]);
+                int len = strlen(buf);
+                int xPos = (VISIBLE_WIDTH - len * 12) / 2;
+                display.setCursor(VIS_X(xPos), VIS_Y(14));
+                display.print(buf);
             }
             
 #elif OLED_DISPLAY_MODE == 3
-            // Mode 3: Both IPs (ESP32 and Elegoo printer)
+            // Mode 3: Both IPs - first..last format (fits 72px width)
             {
                 IPAddress myIp = WiFi.localIP();
                 String printerIp = settingsManager.getElegooIP();
-                
+
                 display.setTextSize(1);
-                
-                // Line 1: ME: <ip>
-                display.setCursor(VIS_X(0), VIS_Y(2));
-                display.print("ME:");
-                display.setCursor(VIS_X(0), VIS_Y(12));
-                display.print(myIp.toString());
-                
-                // Line 2: PR: <ip>
-                display.setCursor(VIS_X(0), VIS_Y(24));
-                display.print("PR:");
-                display.setCursor(VIS_X(18), VIS_Y(24));
-                display.print(printerIp.length() > 0 ? printerIp : "--");
+
+                // ME:NNN..NNN (12 chars max)
+                char buf[14];
+                snprintf(buf, sizeof(buf), "ME:%d..%d", myIp[0], myIp[3]);
+                display.setCursor(VIS_X(0), VIS_Y(8));
+                display.print(buf);
+
+                // PR:NNN..NNN or PR:--
+                display.setCursor(VIS_X(0), VIS_Y(22));
+                if (printerIp.length() > 0) {
+                    int firstDot = printerIp.indexOf('.');
+                    int lastDot = printerIp.lastIndexOf('.');
+                    String first = printerIp.substring(0, firstDot);
+                    String last = printerIp.substring(lastDot + 1);
+                    snprintf(buf, sizeof(buf), "PR:%s..%s", first.c_str(), last.c_str());
+                    display.print(buf);
+                } else {
+                    display.print("PR:--");
+                }
             }
             
 #elif OLED_DISPLAY_MODE == 4
-            // Mode 4: Both IPs + connection status
+            // Mode 4: Both IPs + connection status (abbreviated to fit)
             {
                 IPAddress myIp = WiFi.localIP();
                 String printerIp = settingsManager.getElegooIP();
                 printer_info_t info = elegooCC.getCurrentInformation();
-                
+
                 display.setTextSize(1);
-                
-                // Line 1: ME:<full IP>
+
+                // Line 1: ME:NNN..NNN
+                char buf[14];
+                snprintf(buf, sizeof(buf), "ME:%d..%d", myIp[0], myIp[3]);
                 display.setCursor(VIS_X(0), VIS_Y(0));
-                display.print("ME:");
-                display.print(myIp.toString());
-                
-                // Line 2: PR:<full IP or -->
+                display.print(buf);
+
+                // Line 2: PR:NNN..NNN or PR:--
                 display.setCursor(VIS_X(0), VIS_Y(10));
-                display.print("PR:");
-                display.print(printerIp.length() > 0 ? printerIp : "--");
-                
+                if (printerIp.length() > 0) {
+                    int firstDot = printerIp.indexOf('.');
+                    int lastDot = printerIp.lastIndexOf('.');
+                    String first = printerIp.substring(0, firstDot);
+                    String last = printerIp.substring(lastDot + 1);
+                    snprintf(buf, sizeof(buf), "PR:%s..%s", first.c_str(), last.c_str());
+                    display.print(buf);
+                } else {
+                    display.print("PR:--");
+                }
+
                 // Line 3: Connection status
                 display.setCursor(VIS_X(0), VIS_Y(22));
                 if (info.isWebsocketConnected) {
@@ -290,12 +317,50 @@ static void drawStatus(DisplayStatus status)
                 } else {
                     display.print("DISCONNECTED");
                 }
-                
+
                 // Line 4: Print status if connected
                 display.setCursor(VIS_X(0), VIS_Y(32));
                 if (info.isWebsocketConnected && info.isPrinting) {
                     display.print("PRINTING");
                 }
+            }
+
+#elif OLED_DISPLAY_MODE == 5
+            // Mode 5: Uptime display - adaptive format
+            {
+                unsigned long uptimeSec = millis() / 1000;
+                unsigned long secs = uptimeSec % 60;
+                unsigned long mins = (uptimeSec / 60) % 60;
+                unsigned long hours = (uptimeSec / 3600) % 24;
+                unsigned long days = uptimeSec / 86400;
+
+                display.setTextSize(1);
+                display.setCursor(VIS_X(12), VIS_Y(2));
+                display.print("UPTIME");
+
+                display.setTextSize(2);
+                char buf[12];
+
+                if (days > 0) {
+                    // D:HH:MMd (drop seconds)
+                    snprintf(buf, sizeof(buf), "%lu:%02lu:%02lud", days, hours, mins);
+                } else if (hours > 0) {
+                    // H:MM:SSh
+                    snprintf(buf, sizeof(buf), "%lu:%02lu:%02luh", hours, mins, secs);
+                } else if (mins > 0) {
+                    // M:SSm
+                    snprintf(buf, sizeof(buf), "%lu:%02lum", mins, secs);
+                } else {
+                    // SSs
+                    snprintf(buf, sizeof(buf), "%lus", secs);
+                }
+
+                // Center the text
+                int len = strlen(buf);
+                int width = len * 12;  // TextSize 2 = 12px per char
+                int xPos = (VISIBLE_WIDTH - width) / 2;
+                display.setCursor(VIS_X(xPos), VIS_Y(14));
+                display.print(buf);
             }
 #endif
             break;
