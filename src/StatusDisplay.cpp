@@ -331,11 +331,12 @@ static void drawStatus(DisplayStatus status)
             // Line 2: Friendly format (X.XX weeks/days/hours/mins)
             // Line 3: Raw seconds
             {
+                /*
                 // DEBUG: Add offset to test different uptime values
                 const unsigned long DEBUG_UPTIME_OFFSET_SEC = 621132;
                 unsigned long uptimeSec = millis() / 1000 + DEBUG_UPTIME_OFFSET_SEC;
-
-                //unsigned long uptimeSec = millis() / 1000;
+                */
+                unsigned long uptimeSec = millis() / 1000;
 
                 display.setTextSize(1);
 
