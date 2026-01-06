@@ -30,12 +30,16 @@ Connect your BigTreeTech Smart Filament Sensor (or generic motion/runout sensor)
 
 **Signal Pin Connections:**
 
-| Board Type | Runout Signal Pin | Motion Signal Pin |
+| Board Type | Runout Signal Pin (Blue)| Motion Signal Pin (Green)|
 | :--- | :--- | :--- |
-| **Generic ESP32 / ESP32-S3** | GPIO 12 | GPIO 13 |
+| **Generic ESP32 / ESP32-S3** | GPIO 14 | GPIO 27 |
 | **Seeed XIAO ESP32-S3** | GPIO 5 | GPIO 6 |
 | **Seeed XIAO ESP32-C3** | GPIO 3 | GPIO 2 |
 | **ESP32-C3 SuperMini** | GPIO 3 | GPIO 2 |
+| **Seeed XIAO ESP32-C6** | GPIO 1 | GPIO 2 |
+| **ESP32-C6 DevKitC-1** | GPIO 2 | GPIO 3 |
+| **ESP32-C6 DevKitM-1** | GPIO 2 | GPIO 3 |
+
 
 *Note: Pins can be customized in `platformio.ini` or by rebuilding firmware if needed.*
 
@@ -124,3 +128,4 @@ See [LICENSE.MD](LICENSE.MD).
 
 - OpenCentauri team for enabling the firmware patches required to access filament extrusion data
 - jrowny for the initial idea and starting point
+
