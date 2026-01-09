@@ -1,4 +1,4 @@
-#include "WebServer.h"
+#include "OFSWebServer.h"
 
 #include <AsyncJson.h>
 #include <esp_core_dump.h>
@@ -99,9 +99,9 @@ String getBuildVersion() {
     return version.length() > 0 ? version : "0.0.0";
 }
 
-WebServer::WebServer(int port) : server(port), statusEvents(kRouteStatusEvents) {}
+OFSWebServer::OFSWebServer(int port) : server(port), statusEvents(kRouteStatusEvents) {}
 
-void WebServer::begin()
+void OFSWebServer::begin()
 {
     server.begin();
 
@@ -496,7 +496,7 @@ void WebServer::begin()
     });
 }
 
-void WebServer::loop()
+void OFSWebServer::loop()
 {
     ElegantOTA.loop();
     unsigned long now = millis();
@@ -507,7 +507,7 @@ void WebServer::loop()
     }
 }
 
-void WebServer::buildStatusJson(DynamicJsonDocument &jsonDoc, const printer_info_t &elegooStatus)
+void OFSWebServer::buildStatusJson(DynamicJsonDocument &jsonDoc, const printer_info_t &elegooStatus)
 {
     jsonDoc["stopped"]        = elegooStatus.filamentStopped;
     jsonDoc["filamentRunout"] = elegooStatus.filamentRunout;
@@ -552,7 +552,7 @@ void WebServer::buildStatusJson(DynamicJsonDocument &jsonDoc, const printer_info
     elegoo["runoutPauseCommanded"] = elegooStatus.runoutPauseCommanded;
 }
 
-void WebServer::broadcastStatusUpdate()
+void OFSWebServer::broadcastStatusUpdate()
 {
     printer_info_t elegooStatus = elegooCC.getCurrentInformation();
     // JSON allocation: 576 bytes heap (was 768 bytes)

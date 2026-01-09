@@ -7,7 +7,7 @@
 #include "Logger.h"
 #include "SettingsManager.h"
 #include "SystemServices.h"
-#include "WebServer.h"
+#include "OFSWebServer.h"
 #include "StatusDisplay.h"
 
 #define SPIFFS LittleFS
@@ -40,7 +40,7 @@ const char* buildTimestamp  = BUILD_DATE " " BUILD_TIME;
 const char* buildTimestamp  = __DATE__ " " __TIME__;
 #endif
 
-WebServer webServer(80);
+OFSWebServer webServer(80);
 
 // These things get setup in the loop, not setup, so we need to track if they've happened
 bool isElegooSetup    = false;
