@@ -1,5 +1,5 @@
-#ifndef WEB_SERVER_H
-#define WEB_SERVER_H
+#ifndef OFS_WEB_SERVER_OFS_H
+#define OFS_WEB_SERVER_OFS_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -15,7 +15,8 @@
 // Define SPIFFS as LittleFS
 #define SPIFFS LittleFS
 
-class WebServer
+class OFSWebServer
+
 {
    private:
     AsyncWebServer server;
@@ -28,9 +29,9 @@ class WebServer
     void broadcastStatusUpdate();
 
    public:
-    WebServer(int port = 80);
+    OFSWebServer(int port = 80);
     void begin();
     void loop();
 };
 
-#endif  // WEB_SERVER_H
+#endif  // OFS_WEB_SERVER_OFS_H
