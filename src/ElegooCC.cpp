@@ -1,5 +1,7 @@
 #include "ElegooCC.h"
 
+#include "hal/hal_platform.h"
+
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -73,7 +75,7 @@ printer_info_t ElegooCC::getCurrentInformation()
         jamState = JamState{};
     }
 
-    portENTER_CRITICAL(&_stateMutex);
+    hal_enterCritical(&_stateMutex);
     info.filamentStopped      = motionMonitoringEnabled ? filamentStopped : false;
     info.filamentRunout       = filamentRunout;
     info.runoutPausePending   = filamentRunout && runoutPausePending && settingsManager.getPauseOnRunout();
@@ -113,7 +115,7 @@ printer_info_t ElegooCC::getCurrentInformation()
     info.expectedRateMmPerSec = jamState.expectedRateMmPerSec;
     info.actualRateMmPerSec   = jamState.actualRateMmPerSec;
     info.movementPulseCount   = movementPulseCount;
-    portEXIT_CRITICAL(&_stateMutex);
+    hal_exitCritical(&_stateMutex);
 
     return info;
 }
@@ -182,8 +184,8 @@ ElegooCC::ElegooCC()
     lastPauseRequestMs = 0;
     lastPrintEndMs     = 0;
     lastJamDetectorUpdateMs = 0;
-    cacheLock   = portMUX_INITIALIZER_UNLOCKED;
-    _stateMutex = portMUX_INITIALIZER_UNLOCKED;
+    cacheLock   = HAL_MUTEX_INITIALIZER;
+    _stateMutex = HAL_MUTEX_INITIALIZER;
 
     // event handler
     transport.webSocket.onEvent([this](WStype_t type, uint8_t *payload, size_t length)
@@ -346,9 +348,9 @@ void ElegooCC::handleStatus(JsonDocument &doc)
         if (firstComma != -1 && secondComma != -1)
         {
             String zStr = coordsStr.substring(secondComma + 1);
-            portENTER_CRITICAL(&_stateMutex);
+            hal_enterCritical(&_stateMutex);
             currentZ    = zStr.toFloat();
-            portEXIT_CRITICAL(&_stateMutex);
+            hal_exitCritical(&_stateMutex);
         }
     }
 
@@ -528,10 +530,10 @@ void ElegooCC::handleStatus(JsonDocument &doc)
             //}
         //}
         
-        portENTER_CRITICAL(&_stateMutex);
+        hal_enterCritical(&_stateMutex);
         printStatus  = newStatus;
         bool nowPrinting = (printStatus == SDCP_PRINT_STATUS_PRINTING && (machineStatusMask & (1 << SDCP_MACHINE_STATUS_PRINTING)) != 0);
-        portEXIT_CRITICAL(&_stateMutex);
+        hal_exitCritical(&_stateMutex);
 
         if (wasPrinting && !nowPrinting)
         {
@@ -694,7 +696,7 @@ bool ElegooCC::processFilamentTelemetry(JsonObject &printInfo, unsigned long cur
                             windowedExpected, windowedSensor, currentDeficit,
                             jamState.jammed ? 1 : 0,
                             jamState.hardJamPercent, jamState.softJamPercent, jamState.passRatio,
-                            jamState.graceActive ? 1 : 0, ESP.getFreeHeap());
+                            jamState.graceActive ? 1 : 0, hal_getFreeHeap());
                 lastLoggedExpected = windowedExpected;
                 lastLoggedActual = windowedSensor;
                 lastLoggedDeficit = currentDeficit;
@@ -798,10 +800,10 @@ void ElegooCC::sendCommand(int command, bool waitForAck)
 void ElegooCC::refreshCaches()
 {
     // Use a short critical section so cache refreshes invoked from other tasks stay consistent
-    portENTER_CRITICAL(&cacheLock);
+    hal_enterCritical(&cacheLock);
     refreshSettingsCache();
     refreshJamConfig();
-    portEXIT_CRITICAL(&cacheLock);
+    hal_exitCritical(&cacheLock);
 }
 
 void ElegooCC::refreshSettingsCache()
@@ -1342,7 +1344,7 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     if (debugFlow && currentlyPrinting && (currentTime - lastFlowLogMs) >= EXPECTED_FILAMENT_SAMPLE_MS)
     {
         lastFlowLogMs = currentTime;
-        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t freeHeap = hal_getFreeHeap();
 
         logger.logf(
             "Debug: sdcp_exp=%.2fmm cumul_sns=%.2fmm pulses=%lu | win_exp=%.2f win_sns=%.2f deficit=%.2f | jam=%d hard=%.2f soft=%.2f pass=%.2f grace=%d heap=%lu",
@@ -1649,7 +1651,7 @@ void ElegooCC::updateDiscovery(unsigned long currentTime)
 // Called by GPIO interrupt on movement sensor pin rising edge.
 // Execution time: ~2-3 microseconds (very fast, safe for ISR).
 // ============================================================================
-void IRAM_ATTR ElegooCC::pulseCounterISR()
+void HAL_ISR_ATTR ElegooCC::pulseCounterISR()
 {
     // Directly increment the static counter. This is safe to do from an ISR
     // as it involves no flash-based code.

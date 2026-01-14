@@ -1,6 +1,12 @@
 #include "SystemServices.h"
 
-#include <ESPmDNS.h>
+#include "hal/hal_platform.h"
+
+#if defined(HAL_PLATFORM_ESP32)
+    #include <ESPmDNS.h>
+#elif defined(HAL_PLATFORM_RP2040)
+    #include <LEAmDNS.h>
+#endif
 #include <WiFi.h>
 #include <time.h>
 
@@ -81,14 +87,23 @@ void SystemServices::loop()
 
         if (!ntpConfigured)
         {
+#if defined(HAL_PLATFORM_ESP32)
             configTime(gmtOffset_sec, 0, NTP_SERVER);
             syncTimeWithNTP(currentTime);
             logger.log("NTP setup complete");
+#elif defined(HAL_PLATFORM_RP2040)
+            // RP2040 uses NTP.begin() from arduino-pico core
+            NTP.begin(NTP_SERVER);
+            NTP.waitSet();
+            logger.log("NTP setup complete (RP2040)");
+#endif
             ntpConfigured = true;
         }
         else if (currentTime - lastNTPSyncAttempt >= NTP_SYNC_INTERVAL_MS)
         {
+#if defined(HAL_PLATFORM_ESP32)
             syncTimeWithNTP(currentTime);
+#endif
         }
     }
     else if (!settingsManager.isAPMode() && currentTime - lastWifiCheck >= WIFI_CHECK_INTERVAL_MS)
@@ -141,7 +156,7 @@ void SystemServices::failWifi()
             logger.log("Failed to connect to wifi, reverted to AP mode (first connection attempt)");
             logger.log("Restarting to enter AP mode...");
             delay(1000);  // Give time for serial output
-            ESP.restart();
+            hal_restart();
         }
         else
         {
@@ -205,7 +220,7 @@ bool SystemServices::connectToWifiStation(bool isReconnect)
     while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < CONNECT_TIMEOUT_MS)
     {
         Serial.print('.');
-        vTaskDelay(pdMS_TO_TICKS(500));
+        hal_delayMs(500);
         yield();
     }
 
@@ -304,8 +319,9 @@ void SystemServices::checkWifiConnection()
 
 void SystemServices::syncTimeWithNTP(unsigned long currentTime)
 {
-    struct tm timeinfo;
     lastNTPSyncAttempt = currentTime;
+#if defined(HAL_PLATFORM_ESP32)
+    struct tm timeinfo;
     if (getLocalTime(&timeinfo))
     {
         logger.log("NTP time synchronization successful");
@@ -314,6 +330,10 @@ void SystemServices::syncTimeWithNTP(unsigned long currentTime)
     {
         logger.log("NTP time synchronization failed");
     }
+#else
+    // On RP2040, NTP sync is handled by the core library
+    (void)currentTime;
+#endif
 }
 
 void SystemServices::monitorHeap(unsigned long currentTime)
@@ -325,9 +345,9 @@ void SystemServices::monitorHeap(unsigned long currentTime)
 
     lastHeapCheck = currentTime;
 
-    uint32_t freeHeap = ESP.getFreeHeap();
-    uint32_t minHeap  = ESP.getMinFreeHeap();
-    uint32_t maxAlloc = ESP.getMaxAllocHeap();
+    uint32_t freeHeap = hal_getFreeHeap();
+    uint32_t minHeap  = hal_getMinFreeHeap();
+    uint32_t maxAlloc = hal_getMaxAllocHeap();
 
     float fragmentation = 100.0f * (1.0f - ((float)maxAlloc / (float)freeHeap));
 

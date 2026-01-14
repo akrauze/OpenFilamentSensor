@@ -1,4 +1,5 @@
 #include "Logger.h"
+#include "hal/hal_platform.h"
 #include "time.h"
 #include <cstdarg>
 #include <cstring>
@@ -19,7 +20,7 @@ Logger::Logger()
     logCapacity     = MAX_LOG_ENTRIES;
     uuidCounter     = 0;
     currentLogLevel = LOG_NORMAL;  // Default to normal logging
-    _logMutex       = portMUX_INITIALIZER_UNLOCKED;
+    _logMutex       = HAL_MUTEX_INITIALIZER;
 
     logBuffer = new (std::nothrow) LogEntry[logCapacity];
     if (!logBuffer)
@@ -71,7 +72,7 @@ void Logger::generateUUID(char *buffer)
              (unsigned int)((uuidCounter >> 16) & 0xFFFF),
              (unsigned int)(uuidCounter & 0xFFFF),
              (unsigned int)((uuidCounter >> 8) & 0xFFFF),
-             (unsigned long)ESP.getCycleCount(),
+             (unsigned long)hal_getCycleCount(),
              (unsigned int)(uuidCounter & 0xFFFF));
 }
 
@@ -99,7 +100,7 @@ void Logger::logInternal(const char *message, LogLevel level)
     unsigned long timestamp = getTime();
 
     // Critical section for buffer update
-    portENTER_CRITICAL(&_logMutex);
+    hal_enterCritical(&_logMutex);
 
     // Store in circular buffer with fixed-size copy
     strncpy(logBuffer[currentIndex].uuid, uuid, sizeof(logBuffer[currentIndex].uuid) - 1);
@@ -118,7 +119,7 @@ void Logger::logInternal(const char *message, LogLevel level)
     {
         totalEntries = totalEntries + 1;  // Avoid ++ with volatile
     }
-    portEXIT_CRITICAL(&_logMutex);
+    hal_exitCritical(&_logMutex);
 }
 
 void Logger::log(const char *message, LogLevel level)
@@ -287,10 +288,10 @@ void Logger::streamLogs(Print* printer)
         return;
     }
 
-    portENTER_CRITICAL(&_logMutex);
+    hal_enterCritical(&_logMutex);
     int snapshotIndex = currentIndex;
     int snapshotCount = totalEntries;
-    portEXIT_CRITICAL(&_logMutex);
+    hal_exitCritical(&_logMutex);
 
     if (snapshotCount == 0)
     {
@@ -315,9 +316,9 @@ void Logger::streamLogs(Print* printer)
         // Best approach here: lock, copy ONE entry to local stack, unlock, print, repeat.
         
         LogEntry entryCopy;
-        portENTER_CRITICAL(&_logMutex);
+        hal_enterCritical(&_logMutex);
         entryCopy = logBuffer[bufferIndex];
-        portEXIT_CRITICAL(&_logMutex);
+        hal_exitCritical(&_logMutex);
 
         // Format and print
         time_t localTimestamp = entryCopy.timestamp;
@@ -351,7 +352,7 @@ void Logger::clearLogs()
         return;
     }
     // Clear the buffer
-    portENTER_CRITICAL(&_logMutex);
+    hal_enterCritical(&_logMutex);
     for (int i = 0; i < logCapacity; i++)
     {
         memset(logBuffer[i].uuid, 0, sizeof(logBuffer[i].uuid));
@@ -359,7 +360,7 @@ void Logger::clearLogs()
         memset(logBuffer[i].message, 0, sizeof(logBuffer[i].message));
         logBuffer[i].level = LOG_NORMAL;
     }
-    portEXIT_CRITICAL(&_logMutex);
+    hal_exitCritical(&_logMutex);
 }
 
 int Logger::getLogCount()

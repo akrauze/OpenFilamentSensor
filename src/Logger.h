@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include "hal/hal_sync.h"
 
 // Log levels - each level includes all previous levels
 enum LogLevel : uint8_t
@@ -38,7 +39,7 @@ class Logger
     LogLevel currentLogLevel;
 
     // Concurrency protection
-    portMUX_TYPE _logMutex;
+    HAL_MUTEX_TYPE _logMutex;
 
     Logger();
 

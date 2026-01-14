@@ -3,9 +3,14 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <AsyncTCP.h>
+
+// Platform-specific async TCP includes (ESPAsyncWebServer supports both platforms)
+#if defined(ARDUINO_ARCH_ESP32)
+    #include <AsyncTCP.h>
+#elif defined(ARDUINO_ARCH_RP2040)
+    #include <RPAsyncTCP.h>
+#endif
 #include <ESPAsyncWebServer.h>
-#include <AsyncEventSource.h>
 #include <ElegantOTA.h>
 #include <LittleFS.h>
 

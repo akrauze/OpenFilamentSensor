@@ -1,9 +1,8 @@
 #include "WebServer.h"
 
+#include "hal/hal_platform.h"
+
 #include <AsyncJson.h>
-#include <esp_core_dump.h>
-#include <esp_partition.h>
-#include <esp_system.h>
 
 #include "ElegooCC.h"
 #include "Logger.h"
@@ -256,7 +255,7 @@ void WebServer::begin()
                   request->send(200, "text/plain", "Restarting...");
                   // Delay slightly to allow response to be sent
                   delay(1000);
-                  ESP.restart();
+                  hal_restart();
               });
 
     statusEvents.onConnect([](AsyncEventSourceClient *client) {
@@ -329,27 +328,26 @@ void WebServer::begin()
                   request->send(streamResponse);
               });
 
+    // Coredump endpoints (ESP32 only - requires partition API)
+#if HAL_HAS_COREDUMP
     // Coredump download endpoint (raw partition bytes)
     server.on(kRouteCoredump, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
-                  if (esp_core_dump_image_check() != ESP_OK)
+                  if (!hal_coredumpAvailable())
                   {
                       request->send(404, "text/plain", "No coredump available");
                       return;
                   }
 
-                  const esp_partition_t *partition =
-                      esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
-                                               ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
-                                               nullptr);
-                  if (!partition || partition->size == 0)
+                  const auto *partition = hal_getCoredumpPartition();
+                  if (!partition || hal_getCoredumpPartitionSize(partition) == 0)
                   {
                       request->send(404, "text/plain", "Coredump partition not found");
                       return;
                   }
 
-                  const size_t partitionSize = partition->size;
+                  const size_t partitionSize = hal_getCoredumpPartitionSize(partition);
                   AsyncWebServerResponse *response =
                       request->beginChunkedResponse(
                           "application/octet-stream",
@@ -365,7 +363,7 @@ void WebServer::begin()
                                   toRead = maxLen;
                               }
 
-                              if (esp_partition_read(partition, index, buffer, toRead) != ESP_OK)
+                              if (!hal_readCoredumpPartition(partition, index, buffer, toRead))
                               {
                                   return 0;
                               }
@@ -383,12 +381,10 @@ void WebServer::begin()
     server.on(kRouteCoredumpStatus, HTTP_GET,
               [](AsyncWebServerRequest *request)
               {
-                  const esp_partition_t *partition =
-                      esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
-                                               ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
-                                               nullptr);
-                  bool available = (partition != nullptr && partition->size > 0 &&
-                                    esp_core_dump_image_check() == ESP_OK);
+                  const auto *partition = hal_getCoredumpPartition();
+                  bool available = (partition != nullptr &&
+                                    hal_getCoredumpPartitionSize(partition) > 0 &&
+                                    hal_coredumpAvailable());
                   request->send(200, "application/json",
                                 available ? "{\"available\":true}" : "{\"available\":false}");
               });
@@ -397,18 +393,14 @@ void WebServer::begin()
     server.on(kRouteCoredumpClear, HTTP_POST,
               [](AsyncWebServerRequest *request)
               {
-                  const esp_partition_t *partition =
-                      esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
-                                               ESP_PARTITION_SUBTYPE_DATA_COREDUMP,
-                                               nullptr);
-                  if (!partition || partition->size == 0)
+                  const auto *partition = hal_getCoredumpPartition();
+                  if (!partition || hal_getCoredumpPartitionSize(partition) == 0)
                   {
                       request->send(404, "text/plain", "Coredump partition not found");
                       return;
                   }
 
-                  esp_err_t err = esp_partition_erase_range(partition, 0, partition->size);
-                  if (err != ESP_OK)
+                  if (!hal_eraseCoredumpPartition(partition))
                   {
                       request->send(500, "text/plain", "Failed to clear coredump");
                       return;
@@ -417,6 +409,21 @@ void WebServer::begin()
                   logger.log("Coredump cleared via web UI");
                   request->send(200, "text/plain", "ok");
               });
+#else
+    // Stub endpoints for platforms without coredump support
+    server.on(kRouteCoredump, HTTP_GET,
+              [](AsyncWebServerRequest *request) {
+                  request->send(404, "text/plain", "Coredump not supported on this platform");
+              });
+    server.on(kRouteCoredumpStatus, HTTP_GET,
+              [](AsyncWebServerRequest *request) {
+                  request->send(200, "application/json", "{\"available\":false}");
+              });
+    server.on(kRouteCoredumpClear, HTTP_POST,
+              [](AsyncWebServerRequest *request) {
+                  request->send(404, "text/plain", "Coredump not supported on this platform");
+              });
+#endif
 
     // Live logs endpoint (last 100 entries for UI display)
     server.on(kRouteLogsLive, HTTP_GET,
@@ -435,15 +442,15 @@ void WebServer::begin()
                   request->send(200, "text/plain", "ok");
               });
 
-    // Trigger a controlled panic for testing coredumps
-#ifdef ENABLE_CRASH_TESTING
+    // Trigger a controlled panic for testing coredumps (ESP32 only)
+#if defined(ENABLE_CRASH_TESTING) && HAL_HAS_COREDUMP
     server.on(kRoutePanic, HTTP_POST,
               [](AsyncWebServerRequest *request)
               {
                   logger.log("Panic requested via web UI");
                   request->send(200, "text/plain", "Triggering panic...");
                   delay(250);
-                  esp_system_abort("User-requested panic");
+                  hal_systemAbort("User-requested panic");
               });
 #endif
 

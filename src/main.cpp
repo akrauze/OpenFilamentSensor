@@ -1,6 +1,5 @@
 #include <Arduino.h>
-#include <esp_system.h>
-#include <esp_core_dump.h>
+#include "hal/hal_platform.h"
 
 #include "ElegooCC.h"
 #include "LittleFS.h"
@@ -47,54 +46,39 @@ bool isElegooSetup    = false;
 bool isWebServerSetup = false;
 
 // Store reset reason for diagnostics
-static esp_reset_reason_t lastResetReason = ESP_RST_UNKNOWN;
-
-static const char* getResetReasonString(esp_reset_reason_t reason)
-{
-    switch (reason) {
-        case ESP_RST_POWERON:  return "Power-on";
-        case ESP_RST_SW:       return "Software";
-        case ESP_RST_PANIC:    return "Panic/Crash";
-        case ESP_RST_INT_WDT:  return "Interrupt watchdog";
-        case ESP_RST_TASK_WDT: return "Task watchdog";
-        case ESP_RST_WDT:      return "Other watchdog";
-        case ESP_RST_BROWNOUT: return "Brownout";
-        case ESP_RST_DEEPSLEEP: return "Deep sleep";
-        case ESP_RST_EXT:      return "External";
-        default:               return "Unknown";
-    }
-}
+static int lastResetReasonCode = 0;
 
 void setup()
 {
     // Initialize serial and log reset reason FIRST for crash diagnostics
     Serial.begin(115200);
-    lastResetReason = esp_reset_reason();
-    Serial.printf("Reset reason: %s (%d)\n", getResetReasonString(lastResetReason), lastResetReason);
+    lastResetReasonCode = hal_getResetReasonCode();
+    Serial.printf("Reset reason: %s (%d)\n", hal_getResetReason(), lastResetReasonCode);
 
     // Initialize logging system
-    logger.log("ESP SFS System starting up...");
-    logger.logf("Reset reason: %s (%d)", getResetReasonString(lastResetReason), lastResetReason);
+    logger.log("OFS System starting up...");
+    logger.logf("Reset reason: %s (%d)", hal_getResetReason(), lastResetReasonCode);
     logger.logf("Firmware version: %s", firmwareVersion);
     logger.logf("Chip family: %s", chipFamily);
     logger.logf("Build timestamp (UTC compile time): %s", buildTimestamp);
 
     SPIFFS.begin();  // note: this must be done before wifi/server setup
     logger.log("Filesystem initialized");
+#if defined(HAL_PLATFORM_ESP32)
     logger.logf("Filesystem usage: total=%u bytes, used=%u bytes",
                 SPIFFS.totalBytes(), SPIFFS.usedBytes());
+#endif
 
-    // Check for coredump from previous crash
-    esp_err_t coredumpErr = esp_core_dump_image_check();
-    if (coredumpErr == ESP_OK) {
+    // Check for coredump from previous crash (ESP32 only)
+#if HAL_HAS_COREDUMP
+    if (hal_coredumpAvailable()) {
         logger.log("WARNING: Coredump from previous crash detected!");
         logger.log("Use 'espcoredump.py' tool to analyze the crash");
-    } else if (lastResetReason == ESP_RST_PANIC ||
-               lastResetReason == ESP_RST_TASK_WDT ||
-               lastResetReason == ESP_RST_INT_WDT) {
+    } else if (hal_wasResetByPanic()) {
         logger.logf("WARNING: Crash detected (reason=%s) but no coredump found",
-                    getResetReasonString(lastResetReason));
+                    hal_getResetReason());
     }
+#endif
 
     // Load settings early
     settingsManager.load();
@@ -167,10 +151,10 @@ void loop()
     statusDisplayLoop();
 
     // Strategic 1ms delay to reduce CPU usage while maintaining detection accuracy.
-    // This yields to the FreeRTOS scheduler, reducing CPU from 100% spin to ~10-20%.
+    // This yields to the scheduler, reducing CPU from 100% spin to ~10-20%.
     // 1ms is well below all critical timing thresholds:
     // - Motion sensor: ~60ms between pulses at typical speeds
     // - Jam detector: 250ms update interval
     // - Printer polling: 250ms status interval
-    vTaskDelay(pdMS_TO_TICKS(1));
+    hal_delayMs(1);
 }

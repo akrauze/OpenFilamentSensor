@@ -6,6 +6,7 @@
 #include <WebSocketsClient.h>
 #include <WiFiUdp.h>
 #include <functional>
+#include "hal/hal_platform.h"
 
 #include "FilamentMotionSensor.h"
 #include "JamDetector.h"
@@ -229,8 +230,8 @@ class ElegooCC
     };
     CachedSettings cachedSettings;
     JamConfig cachedJamConfig;
-    portMUX_TYPE cacheLock;
-    portMUX_TYPE _stateMutex;
+    HAL_MUTEX_TYPE cacheLock;
+    HAL_MUTEX_TYPE _stateMutex;
 
     // Command tracking
     unsigned long lastPauseRequestMs;
@@ -285,7 +286,7 @@ class ElegooCC
     static ElegooCC &getInstance();
 
     // Interrupt handler for pulse detection (static, attached to GPIO interrupt)
-    static void IRAM_ATTR pulseCounterISR();
+    static void HAL_ISR_ATTR pulseCounterISR();
 
     void setup();
     void loop();
