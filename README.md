@@ -41,7 +41,7 @@ Connect your BigTreeTech Smart Filament Sensor (or generic motion/runout sensor)
 | **ESP32-C6 DevKitM-1** | GPIO 2 | GPIO 3 |
 
 
-*Note: Pins can be customized in `platformio.ini` or by rebuilding firmware if needed.*
+*Note: Pins can be customized on advanced settings on the WebUI (requires a restart).*
 
 ### 2. First-Time Installation
 

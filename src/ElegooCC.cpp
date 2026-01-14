@@ -195,18 +195,20 @@ void ElegooCC::setup()
     // Initialize settings and config caches
     refreshCaches();
 
-    // Set up GPIO interrupt for pulse detection on MOVEMENT_SENSOR_PIN
+    // Set up GPIO interrupt for pulse detection on movement sensor pin
     // Rising edge trigger: counts each time sensor goes LOW→HIGH
     // IRAM_ATTR requirement handled by Arduino framework for static method
-    pinMode(MOVEMENT_SENSOR_PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(MOVEMENT_SENSOR_PIN),
+    int movementPin = cachedSettings.movementSensorPin;
+    int runoutPin = cachedSettings.filamentRunoutPin;
+    pinMode(movementPin, INPUT);
+    attachInterrupt(digitalPinToInterrupt(movementPin),
                     ElegooCC::pulseCounterISR,
                     RISING);
-    logger.logf("Pulse detection via GPIO%d interrupt enabled", MOVEMENT_SENSOR_PIN);
+    logger.logf("Pulse detection via GPIO%d interrupt enabled", movementPin);
 
     // Initialize filament runout state from actual pin reading at startup
     // This ensures jam detection is correctly disarmed if device boots with no filament
-    int pinValue = digitalRead(FILAMENT_RUNOUT_PIN);
+    int pinValue = digitalRead(runoutPin);
 #ifdef INVERT_RUNOUT_PIN
     pinValue = !pinValue;
 #endif
@@ -811,6 +813,8 @@ void ElegooCC::refreshSettingsCache()
     cachedSettings.motionMonitoringEnabled = settingsManager.getEnabled();
     cachedSettings.pulseReductionPercent = settingsManager.getPulseReductionPercent();
     cachedSettings.movementMmPerPulse = settingsManager.getMovementMmPerPulse();
+    cachedSettings.filamentRunoutPin = settingsManager.getFilamentRunoutPin();
+    cachedSettings.movementSensorPin = settingsManager.getMovementSensorPin();
 }
 
 void ElegooCC::refreshJamConfig()
@@ -1117,7 +1121,7 @@ void ElegooCC::checkFilamentRunout(unsigned long currentTime)
 {
     // The signal output of the switch sensor is at low level when no filament is detected
     // Some boards/sensors may need inverted logic
-    int pinValue = digitalRead(FILAMENT_RUNOUT_PIN);
+    int pinValue = digitalRead(cachedSettings.filamentRunoutPin);
 #ifdef INVERT_RUNOUT_PIN
     pinValue = !pinValue;  // Invert the logic if flag is set
 #endif
@@ -1180,7 +1184,7 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
         lastIsrPulseCount = ElegooCC::isrPulseCounter;
 
         // When tracking is frozen (printer paused after a jam), just track pin changes
-        int currentMovementValue = digitalRead(MOVEMENT_SENSOR_PIN);
+        int currentMovementValue = digitalRead(cachedSettings.movementSensorPin);
 #ifdef INVERT_MOVEMENT_PIN
         currentMovementValue = !currentMovementValue;  // Invert the logic if flag is set
 #endif
@@ -1258,17 +1262,19 @@ void ElegooCC::checkFilamentMovement(unsigned long currentTime)
     // Pin debug logging (once per second) - BEFORE early return so it always runs
     // Shows RAW pin values (before any inversion)
     // Use cached settings to avoid repeated getter calls
-    //bool pinDebug = cachedSettings.pinDebugLogging;
-    //if (pinDebug && (currentTime - lastPinDebugLogMs) >= 1000)
-    //{
+    // bool pinDebug = cachedSettings.pinDebugLogging;
+    // if (pinDebug && (currentTime - lastPinDebugLogMs) >= 1000)
+    // {
     //    lastPinDebugLogMs = currentTime;
-    //    int runoutPinValue = digitalRead(FILAMENT_RUNOUT_PIN);
-    //    int movementPinValue = digitalRead(MOVEMENT_SENSOR_PIN);
+    //    int runoutPin = cachedSettings.filamentRunoutPin;
+    //    int movementPin = cachedSettings.movementSensorPin;
+    //    int runoutPinValue = digitalRead(runoutPin);
+    //    int movementPinValue = digitalRead(movementPin);
     //    logger.logf("PIN: R%d=%d M%d=%d p=%lu",
-    //                FILAMENT_RUNOUT_PIN, runoutPinValue,
-    //                MOVEMENT_SENSOR_PIN, movementPinValue,
+    //                runoutPin, runoutPinValue,
+    //                movementPin, movementPinValue,
     //                movementPulseCount);
-    //}
+    // }
 
     // Only run jam detection when actively printing with valid telemetry
     if (!shouldCountPulses || !expectedTelemetryAvailable)
@@ -1640,7 +1646,7 @@ void ElegooCC::updateDiscovery(unsigned long currentTime)
 // This replaces polling-based edge detection and guarantees no pulses are dropped,
 // even during loop stalls or high-speed extrusion.
 //
-// Called by GPIO interrupt on MOVEMENT_SENSOR_PIN rising edge.
+// Called by GPIO interrupt on movement sensor pin rising edge.
 // Execution time: ~2-3 microseconds (very fast, safe for ISR).
 // ============================================================================
 void IRAM_ATTR ElegooCC::pulseCounterISR()

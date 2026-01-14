@@ -72,10 +72,6 @@ void setup()
     lastResetReason = esp_reset_reason();
     Serial.printf("Reset reason: %s (%d)\n", getResetReasonString(lastResetReason), lastResetReason);
 
-    // Set up pins
-    pinMode(FILAMENT_RUNOUT_PIN, INPUT_PULLUP);
-    pinMode(MOVEMENT_SENSOR_PIN, INPUT_PULLUP);
-
     // Initialize logging system
     logger.log("ESP SFS System starting up...");
     logger.logf("Reset reason: %s (%d)", getResetReasonString(lastResetReason), lastResetReason);
@@ -105,6 +101,14 @@ void setup()
     logger.log("Settings Manager Loaded");
     String settingsJson = settingsManager.toJson(false);
     logger.logf("Settings snapshot: %s", settingsJson.c_str());
+
+    // Set up pins from settings (after settings are loaded)
+    int runoutPin = settingsManager.getFilamentRunoutPin();
+    int motionPin = settingsManager.getMovementSensorPin();
+    pinMode(runoutPin, INPUT_PULLUP);
+    pinMode(motionPin, INPUT_PULLUP);
+    logger.logf("Filament Runout pin: %d", runoutPin);
+    logger.logf("Movement Sensor pin: %d", motionPin);
 
     systemServices.begin();
 

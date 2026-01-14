@@ -176,6 +176,10 @@ void WebServer::begin()
                 settingsManager.setShowDebugPage(jsonObj["show_debug_page"].as<bool>());
             if (jsonObj.containsKey("timezone_offset_minutes"))
                 settingsManager.setTimezoneOffsetMinutes(jsonObj["timezone_offset_minutes"].as<int>());
+            if (jsonObj.containsKey("filament_runout_pin"))
+                settingsManager.setFilamentRunoutPin(jsonObj["filament_runout_pin"].as<int>());
+            if (jsonObj.containsKey("movement_sensor_pin"))
+                settingsManager.setMovementSensorPin(jsonObj["movement_sensor_pin"].as<int>());
 
             bool saved = settingsManager.save();
             if (saved)

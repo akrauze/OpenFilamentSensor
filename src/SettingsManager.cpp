@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <stdlib.h>
 
+#include "ElegooCC.h"
 #include "Logger.h"
 
 namespace
@@ -107,6 +108,8 @@ static const SettingField kSettingFields[] = {
     makeBoolField("test_recording_mode", offsetof(user_settings, test_recording_mode), false),
     makeBoolField("show_debug_page", offsetof(user_settings, show_debug_page), false),
     makeIntField("timezone_offset_minutes", offsetof(user_settings, timezone_offset_minutes), 0),
+    makeIntField("filament_runout_pin", offsetof(user_settings, filament_runout_pin), FILAMENT_RUNOUT_PIN),
+    makeIntField("movement_sensor_pin", offsetof(user_settings, movement_sensor_pin), MOVEMENT_SENSOR_PIN),
 };
 
 constexpr size_t SETTINGS_JSON_CAPACITY = 1536;  // Increased from 1152 to prevent truncation
@@ -712,6 +715,30 @@ void SettingsManager::setTimezoneOffsetMinutes(int offsetMinutes)
     if (!isLoaded)
         load();
     settings.timezone_offset_minutes = offsetMinutes;
+}
+
+int SettingsManager::getFilamentRunoutPin()
+{
+    return getSettings().filament_runout_pin;
+}
+
+void SettingsManager::setFilamentRunoutPin(int pin)
+{
+    if (!isLoaded)
+        load();
+    settings.filament_runout_pin = pin;
+}
+
+int SettingsManager::getMovementSensorPin()
+{
+    return getSettings().movement_sensor_pin;
+}
+
+void SettingsManager::setMovementSensorPin(int pin)
+{
+    if (!isLoaded)
+        load();
+    settings.movement_sensor_pin = pin;
 }
 
 String SettingsManager::toJson(bool includePassword)

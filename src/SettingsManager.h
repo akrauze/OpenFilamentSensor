@@ -30,6 +30,8 @@ struct user_settings
     bool   test_recording_mode;    // Enable CSV test data recording to ./condensed directory
     bool   show_debug_page;        // Show Debug page in web UI (default false)
     int    timezone_offset_minutes; // Offset from UTC in minutes (e.g., -300 for EST)
+    int    filament_runout_pin;    // GPIO pin for filament runout sensor
+    int    movement_sensor_pin;    // GPIO pin for movement/pulse sensor
 };
 
 class SettingsManager
@@ -108,6 +110,10 @@ class SettingsManager
     void setShowDebugPage(bool show);             // Show/hide debug page in web UI
     int    getTimezoneOffsetMinutes();
     void setTimezoneOffsetMinutes(int offsetMinutes);
+    int    getFilamentRunoutPin();                // Get filament runout sensor pin
+    void setFilamentRunoutPin(int pin);           // Set filament runout sensor pin
+    int    getMovementSensorPin();                // Get movement/pulse sensor pin
+    void setMovementSensorPin(int pin);           // Set movement/pulse sensor pin
 
     String toJson(bool includePassword = true);
 };
