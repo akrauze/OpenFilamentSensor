@@ -3003,7 +3003,9 @@
                 movement_mm_per_pulse: parseFloat(document.getElementById('movement_mm_per_pulse').value),
                 auto_calibrate_sensor: document.getElementById('auto_calibrate_sensor').checked,
                 pulse_reduction_percent: parseFloat(document.getElementById('pulse_reduction_percent').value),
-                show_debug_page: document.getElementById('show_debug_page').checked
+                show_debug_page: document.getElementById('show_debug_page').checked,
+                filament_runout_pin: parseInt(document.getElementById('filament_runout_pin').value),
+                movement_sensor_pin: parseInt(document.getElementById('movement_sensor_pin').value)
             };
         }
 
@@ -3217,6 +3219,20 @@
                         <p class="form-help">For support/debugging only. This will immediately crash the device and generate a coredump.</p>
                     </div>
                     ` : ''}
+
+                    <h3 class="section-title">Hardware Pin Configuration</h3>
+
+                    <div class="form-group">
+                        <label class="form-label">Filament Runout Pin</label>
+                        <input type="number" class="form-input" id="filament_runout_pin" value="${currentSettings.filament_runout_pin || 12}" min="0" max="48">
+                        <p class="form-help">GPIO pin number for the filament presence (runout) switch. Default: 12. Requires device restart to take effect.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Movement Sensor Pin</label>
+                        <input type="number" class="form-input" id="movement_sensor_pin" value="${currentSettings.movement_sensor_pin || 13}" min="0" max="48">
+                        <p class="form-help">GPIO pin number for the filament motion (encoder) sensor. Default: 13. Requires device restart to take effect.</p>
+                    </div>
 
                     <h3 class="section-title">Connection Settings</h3>
 

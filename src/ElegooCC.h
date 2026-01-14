@@ -224,6 +224,8 @@ class ElegooCC
         bool motionMonitoringEnabled;
         float pulseReductionPercent;
         float movementMmPerPulse;
+        int filamentRunoutPin;
+        int movementSensorPin;
     };
     CachedSettings cachedSettings;
     JamConfig cachedJamConfig;
