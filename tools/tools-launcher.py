@@ -66,6 +66,9 @@ BUILD_ENV_OPTIONS = [
     "esp32",
     "seeed_esp32s3",
     "seeed_esp32c3",
+    "seeed_esp32c6",
+    "esp32c6",
+    "esp32c6m",
 ]
 
 RELEASE_ENV_OPTIONS = BUILD_ENV_OPTIONS + ["all"]

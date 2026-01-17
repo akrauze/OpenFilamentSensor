@@ -66,6 +66,9 @@ $BuildEnvOptions = @(
     "esp32",
     "seeed_esp32s3",
     "seeed_esp32c3",
+    "seeed_esp32c6",
+    "esp32c6",
+    "esp32c6m",    
     "<enter manually>"
 )
 
